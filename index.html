@@ -81,7 +81,6 @@
       // Firebase 初始化與狀態
       // ------------------------------------------
       const [dbConfig, setDbConfig] = useState(() => {
-        // 若平台有注入則優先使用，否則讀取本地儲存
         const local = localStorage.getItem('artale_firebase_config');
         if (window.__firebase_config) return window.__firebase_config;
         return local ? JSON.parse(local) : null;
@@ -101,6 +100,9 @@
       const [raids, setRaids] = useState([]);
       const [currentRaidId, setCurrentRaidId] = useState(null);
       const [isCreating, setIsCreating] = useState(false);
+
+      // 隱藏重設點擊次數狀態
+      const [hiddenResetClicks, setHiddenResetClicks] = useState(0);
 
       // 表單狀態
       const [newRaid, setNewRaid] = useState({ title: '', bossId: 'zakum_normal', notes: '', proposedTimes: [''] });
@@ -138,11 +140,11 @@
         }
       };
 
-      // 清除金鑰設定（用於重新設定）
+      // 清除金鑰設定（觸發重設）
       const handleResetConfig = () => {
         triggerConfirm(
-          "確定要清除資料庫設定嗎？",
-          "清除後需要重新輸入 Firebase 金鑰才能繼續使用組隊系統。",
+          "確定要重置資料庫設定嗎？",
+          "重置後網頁將會重新整理，並需要再次輸入 Firebase 金鑰才能繼續使用組隊系統。",
           () => {
             localStorage.removeItem('artale_firebase_config');
             window.location.reload();
@@ -150,11 +152,22 @@
         );
       };
 
+      // 點擊小助手標題觸發隱藏彩蛋重設
+      const handleSecretClick = () => {
+        setHiddenResetClicks(prev => {
+          const next = prev + 1;
+          if (next >= 5) {
+            handleResetConfig();
+            return 0;
+          }
+          return next;
+        });
+      };
+
       // 初始化 Firebase
       useEffect(() => {
         if (!dbConfig) return;
         try {
-          // 防止重複初始化
           let app;
           if (firebase.apps.length === 0) {
             app = firebase.initializeApp(dbConfig);
@@ -601,18 +614,17 @@
                   <h1 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">
                     NyxShade遠征隊組隊系統
                   </h1>
-                  <p className="text-[10px] text-slate-400">MSW 懷舊楓之谷出團小助手</p>
+                  <p 
+                    onClick={handleSecretClick}
+                    className="text-[10px] text-slate-400 select-none cursor-default active:text-amber-400"
+                    title="隱藏的設定區"
+                  >
+                    MSW 懷舊楓之谷出團小助手
+                  </p>
                 </div>
               </div>
 
               <div className="flex items-center space-x-2">
-                <button 
-                  onClick={handleResetConfig}
-                  className="bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-400 hover:text-rose-400 rounded-lg px-2 py-1.5 transition text-xs"
-                  title="重設資料庫"
-                >
-                  ⚙️ 重設資料庫
-                </button>
                 {profileLoaded ? (
                   <button 
                     onClick={() => setShowProfileModal(true)}
@@ -921,7 +933,7 @@
                         <div className="space-y-4">
                           <div className="p-3 bg-slate-950/50 rounded-xl border border-slate-855 text-xs text-slate-400 space-y-1.5">
                             <p>角色資訊：</p>
-                            <p className="text-slate-200 font-semibold">
+                            <p className="text-slate-200 font-semibold flex flex-wrap gap-1.5">
                               IGN: {profile.ign || "未填寫"} | {profile.job} | Lv.{profile.level}
                             </p>
                             <button onClick={() => setShowProfileModal(true)} className="text-indigo-400 hover:underline font-bold text-[10px]">
@@ -956,7 +968,7 @@
                         <p className="text-xs text-slate-400 mb-4">使用下方分組名單中的按鈕將隊員歸類，完成後複製排班表即可貼回群組！</p>
                         <button
                           onClick={() => handleResetRaid(activeRaid.id)}
-                          className="w-full bg-slate-950 hover:bg-slate-850 border border-amber-500/30 text-amber-400 font-bold py-2 rounded-xl text-xs transition"
+                          className="w-full bg-slate-950 hover:bg-slate-850 border border-amber-500/30 text-amber-400 font-bold py-2.5 rounded-xl text-xs transition"
                         >
                           🔄 一鍵重置此團名單與投票
                         </button>
@@ -1002,10 +1014,10 @@
                                 </div>
                                 {isCreator && (
                                   <div className="mt-2 pt-2 border-t border-slate-850/60 flex flex-wrap gap-1">
-                                    {groupKey !== '1' && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '1')} className="bg-slate-800 px-1 py-0.5 rounded text-[9px]">一隊</button>}
-                                    {groupKey !== '2' && boss?.maxPlayers > 6 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '2')} className="bg-slate-800 px-1 py-0.5 rounded text-[9px]">二隊</button>}
-                                    {groupKey !== '3' && boss?.maxPlayers > 12 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '3')} className="bg-slate-800 px-1 py-0.5 rounded text-[9px]">三隊</button>}
-                                    {groupKey !== 'reserve' && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, 'reserve')} className="bg-slate-800 px-1 py-0.5 rounded text-[9px]">候補</button>}
+                                    {groupKey !== '1' && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '1')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">一隊</button>}
+                                    {groupKey !== '2' && boss?.maxPlayers > 6 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '2')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">二隊</button>}
+                                    {groupKey !== '3' && boss?.maxPlayers > 12 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '3')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">三隊</button>}
+                                    {groupKey !== 'reserve' && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, 'reserve')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">候補</button>}
                                     <button onClick={() => handleKickParticipant(activeRaid.id, p.userId)} className="bg-rose-950/40 text-rose-400 px-1.5 py-0.5 rounded text-[9px] ml-auto">剔除</button>
                                   </div>
                                 )}
@@ -1052,9 +1064,9 @@
                                     </div>
                                     {isCreator && (
                                       <div className="mt-2 pt-2 border-t border-slate-855/60 flex flex-wrap gap-1">
-                                        <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '1')} className="bg-slate-800 px-1 py-0.5 rounded text-[9px]">一隊</button>
-                                        {boss?.maxPlayers > 6 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '2')} className="bg-slate-800 px-1 py-0.5 rounded text-[9px]">二隊</button>}
-                                        {boss?.maxPlayers > 12 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '3')} className="bg-slate-800 px-1 py-0.5 rounded text-[9px]">三隊</button>}
+                                        <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '1')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">一隊</button>
+                                        {boss?.maxPlayers > 6 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '2')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">二隊</button>}
+                                        {boss?.maxPlayers > 12 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '3')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">三隊</button>}
                                         <button onClick={() => handleKickParticipant(activeRaid.id, p.userId)} className="bg-rose-950/40 text-rose-400 px-1.5 py-0.5 rounded text-[9px] ml-auto">剔除</button>
                                       </div>
                                     )}
@@ -1108,7 +1120,7 @@
                       required
                       value={newRaid.title}
                       onChange={(e) => setNewRaid({ ...newRaid, title: e.target.value })}
-                      placeholder="例：週六晚上普通炎魔首發團"
+                      placeholder="例：週六晚上普通炎魔首發團 (招募聖火黑騎、主教)"
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 focus:outline-none text-slate-100"
                     />
                   </div>
