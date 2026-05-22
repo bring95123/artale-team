@@ -22,6 +22,24 @@
   <script type="text/babel">
     const { useState, useEffect } = React;
 
+    // =========================================================================
+    // 📢 【管理員設定區】全域預設 Firebase 金鑰設定
+    // =========================================================================
+    // 如果您希望所有成員一進網頁就自動連線，不需要每個人都手動貼上金鑰：
+    // 請將下方的 null 替換為您的 Firebase Config 物件。
+    //
+    // 範例：
+    // const DEFAULT_FIREBASE_CONFIG = {
+    //   apiKey: "AIzaSyCx...",
+    //   authDomain: "your-project.firebaseapp.com",
+    //   projectId: "your-project-id",
+    //   storageBucket: "your-project.appspot.com",
+    //   messagingSenderId: "1234567890",
+    //   appId: "1:1234567:web:abcd123"
+    // };
+    // =========================================================================
+    const DEFAULT_FIREBASE_CONFIG = null; 
+
     // ==========================================
     // 遊戲常數設定 (Boss、職業等)
     // ==========================================
@@ -81,8 +99,12 @@
       // Firebase 初始化與連線狀態
       // ------------------------------------------
       const [dbConfig, setDbConfig] = useState(() => {
-        const local = localStorage.getItem('artale_firebase_config');
+        // 1. 優先使用程式碼最上方定義的全域預設金鑰
+        if (DEFAULT_FIREBASE_CONFIG) return DEFAULT_FIREBASE_CONFIG;
+        // 2. 其次使用外部環境注入的金鑰
         if (window.__firebase_config) return window.__firebase_config;
+        // 3. 最後才使用瀏覽器本機快取的金鑰
+        const local = localStorage.getItem('artale_firebase_config');
         return local ? JSON.parse(local) : null;
       });
 
@@ -1471,7 +1493,7 @@
                   {/* 貼心提示：告知使用者預設帳密 */}
                   <div className="p-3 bg-amber-500/5 rounded-xl border border-amber-500/10 text-[10px] text-amber-300 leading-relaxed">
                     <span className="font-bold">💡 貼心提醒：</span><br />
-                    本系統目前預設管理帳號為 <code className="bg-slate-950 px-1 py-0.5 rounded font-mono">***</code>，密碼為 <code className="bg-slate-950 px-1 py-0.5 rounded font-mono">***</code>。(可在本網頁原始碼內隨意修改之)。
+                    本系統目前預設管理帳號為 <code className="bg-slate-950 px-1 py-0.5 rounded font-mono">admin</code>，密碼為 <code className="bg-slate-950 px-1 py-0.5 rounded font-mono">nyxshadeadmin</code>。(可在本網頁原始碼內隨意修改之)。
                   </div>
 
                   <button type="submit" className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2.5 rounded-xl transition">核對密碼並登入</button>
@@ -1534,7 +1556,7 @@
                         }
 
                         return filtered.map(u => (
-                          <div key={u.id} className="flex items-center justify-between bg-slate-950/80 p-2.5 rounded-xl border border-slate-850 text-xs">
+                          <div key={u.id} className="flex items-center justify-between bg-slate-950/80 p-2.5 rounded-xl border border-slate-855 text-xs">
                             <div className="truncate pr-2">
                               <p className="font-bold text-slate-200 truncate">{u.ign}</p>
                               <p className="text-[10px] text-slate-500 mt-0.5">
