@@ -799,7 +799,10 @@
 
       const activeRaid = raids.find(r => r.id === currentRaidId);
       const boss = activeRaid ? BOSS_LIST.find(b => b.id === activeRaid.bossId) : null;
-      const isCreator = user && activeRaid ? (user.uid === activeRaid.creatorId || isAdminLoggedIn) : false;
+      
+      // 💡 權限修正：現在「團長排班工具」及所有小隊移動功能 (isCreator 標記)
+      // 必須基於管理員已登入狀態 (isAdminLoggedIn)！未登入之前普通玩家均看不到
+      const isCreator = user && activeRaid ? isAdminLoggedIn : false;
 
       return (
         <div className="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col justify-between">
@@ -872,7 +875,7 @@
                       )}
                     </div>
                   ) : (
-                    <div className="h-10 w-32 bg-slate-850 animate-pulse rounded-xl" />
+                    <div className="h-10 w-32 bg-slate-855 animate-pulse rounded-xl" />
                   )}
                 </div>
               </div>
@@ -901,15 +904,18 @@
                         支援多身分角色登錄！隊員可線上自主投票時間、隨時切換角色報名打王。
                       </p>
                       <div className="mt-6 flex flex-wrap gap-3">
-                        <button 
-                          onClick={() => setIsCreating(true)}
-                          className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold px-6 py-3 rounded-xl shadow-lg transition flex items-center space-x-2 text-sm md:text-base"
-                        >
-                          <span>➕ 發起全新遠征隊</span>
-                        </button>
+                        {/* 💡 權限限制：只有系統管理員登入時，才可點選發起全新遠征隊揪團 */}
+                        {isAdminLoggedIn && (
+                          <button 
+                            onClick={() => setIsCreating(true)}
+                            className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold px-6 py-3 rounded-xl shadow-lg transition flex items-center space-x-2 text-sm md:text-base animate-pulse"
+                          >
+                            <span>➕ 發起全新遠征隊</span>
+                          </button>
+                        )}
                         <button 
                           onClick={() => setShowProfileModal(true)}
-                          className="bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold px-5 py-3 rounded-xl border border-slate-700 transition text-sm md:text-base"
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-5 py-3 rounded-xl border border-slate-700 transition text-sm md:text-base"
                         >
                           ⚙️ 管理我的角色卡
                         </button>
@@ -1027,7 +1033,7 @@
                                 📋 複製公告排班表
                               </button>
                               
-                              {/* 💡 團長排班：編輯本團與刪除本團 */}
+                              {/* 💡 編輯與刪除本團：現在只提供給已登入管理員 */}
                               {isCreator && (
                                 <>
                                   <button
@@ -1216,6 +1222,7 @@
                         )}
                       </div>
 
+                      {/* 💡 團長排班工具卡片：現在只提供給已登入管理員 */}
                       {isCreator && (
                         <div className="bg-slate-900 border border-amber-500/20 rounded-3xl p-6 shadow-xl">
                           <h3 className="text-base font-extrabold text-amber-400 mb-1.5">👑 團長排班工具</h3>
@@ -1239,9 +1246,7 @@
                     const party3 = participants.filter(p => p.party === '3');
                     const reserves = participants.filter(p => p.party === 'reserve' || !p.party);
 
-                    // 💡 重構 Roster 隊員卡片 - 槽位化極簡與高清護眼大字體雙重設計
                     const renderRosterGroup = (title, pList, groupKey, color) => {
-                      // 💡 補齊到 6 個槽位，呈現經典遊戲大廳空欄位
                       const slots = [...pList];
                       while (slots.length < 6) {
                         slots.push({ isPlaceholder: true });
@@ -1264,7 +1269,6 @@
                             {/* 6格槽位列表 */}
                             <div className="space-y-3.5">
                               {slots.map((p, idx) => {
-                                // 1. 空槽位渲染 (提高字體大小與邊框可讀性)
                                 if (p.isPlaceholder) {
                                   return (
                                     <div 
@@ -1280,7 +1284,6 @@
                                   );
                                 }
 
-                                // 2. 已分配隊員卡片 (寬大護眼、結構分明、按鈕不再擁擠)
                                 return (
                                   <div 
                                     key={p.userId + '-' + p.ign} 
@@ -1302,7 +1305,7 @@
                                       <span>等級：<strong className="text-white font-extrabold font-mono text-base">Lv. {p.level}</strong></span>
                                     </div>
 
-                                    {/* 備註泡泡框：使用醒目的對話框呈現（如圖 image_252527.png 的高對比修改需求） */}
+                                    {/* 備註泡泡框 */}
                                     {p.memo && (
                                       <div className="bg-slate-900/90 border border-amber-500/10 text-amber-300 text-sm px-3.5 py-2.5 rounded-xl flex items-start space-x-2 leading-relaxed break-all">
                                         <span className="shrink-0 text-amber-400 mt-0.5">💬</span>
@@ -1310,7 +1313,7 @@
                                       </div>
                                     )}
 
-                                    {/* 底行：微縮管理按鈕（行內橫向排列，放大按鈕字體與大小） */}
+                                    {/* 底行：微縮管理按鈕 (排班定位調整與剔除功能) 現在只提供給已登入管理員 */}
                                     {isCreator && (
                                       <div className="flex flex-col gap-2 mt-1.5 pt-3 border-t border-slate-800/80 select-none">
                                         <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">調整隊長/小隊：</span>
@@ -1738,7 +1741,7 @@
                     <button 
                       type="button" 
                       onClick={() => setShowProfileModal(false)} 
-                      className="flex-1 bg-slate-800 hover:bg-slate-750 py-3 rounded-xl text-sm font-bold text-slate-300"
+                      className="flex-1 bg-slate-850 hover:bg-slate-750 py-3 rounded-xl text-sm font-bold text-slate-300"
                     >
                       取消
                     </button>
@@ -1818,7 +1821,7 @@
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   
-                  {/* 左側：成員角色卡名單與刪除管理 */}
+                  {/* ...管理者控制台內部... */}
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <h4 className="font-bold text-sm text-slate-200 flex items-center space-x-1.5">
@@ -1829,7 +1832,6 @@
                       </h4>
                     </div>
 
-                    {/* 搜尋欄 */}
                     <input
                       type="text"
                       value={searchUserQuery}
@@ -1838,7 +1840,6 @@
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none"
                     />
 
-                    {/* 註冊清單列表 */}
                     <div className="max-h-[300px] overflow-y-auto pr-2 space-y-3 scrollbar-thin scrollbar-thumb-slate-800">
                       {(() => {
                         const filtered = registeredUsers.filter(u => {
@@ -1887,7 +1888,6 @@
                     </div>
                   </div>
 
-                  {/* 右側：資料庫維護與系統重置 */}
                   <div className="space-y-4">
                     <h4 className="font-bold text-sm text-slate-200">⚙️ 資料庫與連線維護</h4>
                     
