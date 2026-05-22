@@ -76,9 +76,9 @@
       }
     }
 
-    function App() {
+   function App() {
       // ------------------------------------------
-      // Firebase 初始化與狀態
+      // Firebase 初始化與連線狀態
       // ------------------------------------------
       const [dbConfig, setDbConfig] = useState(() => {
         const local = localStorage.getItem('artale_firebase_config');
@@ -91,20 +91,33 @@
       const [firebaseReady, setFirebaseReady] = useState(false);
       const [db, setDb] = useState(null);
       const [auth, setAuth] = useState(null);
+      const [dbStatus, setDbStatus] = useState('connecting'); // 'no-config' | 'connecting' | 'connected' | 'error'
 
       const [user, setUser] = useState(null);
       const [profile, setProfile] = useState({ ign: '', job: '主教', level: 120 });
       const [profileLoaded, setProfileLoaded] = useState(false);
       const [showProfileModal, setShowProfileModal] = useState(false);
+      const [isSavingProfile, setIsSavingProfile] = useState(false);
 
       const [raids, setRaids] = useState([]);
       const [currentRaidId, setCurrentRaidId] = useState(null);
       const [isCreating, setIsCreating] = useState(false);
 
-      // 隱藏重設點擊次數狀態
+      // 隱藏重設點擊次數狀態 (點 5 次灰色小字重設)
       const [hiddenResetClicks, setHiddenResetClicks] = useState(0);
 
-      // 表單狀態
+      // 管理者帳號狀態
+      const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(() => {
+        return sessionStorage.getItem('artale_is_admin') === 'true';
+      });
+      const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
+      const [showAdminConsole, setShowAdminConsole] = useState(false);
+      const [adminUsername, setAdminUsername] = useState('');
+      const [adminPassword, setAdminPassword] = useState('');
+      const [registeredUsers, setRegisteredUsers] = useState([]);
+      const [searchUserQuery, setSearchUserQuery] = useState('');
+
+      // 表單與通用 UI 狀態
       const [newRaid, setNewRaid] = useState({ title: '', bossId: 'zakum_normal', notes: '', proposedTimes: [''] });
       const [signUpMemo, setSignUpMemo] = useState('');
       const [toast, setToast] = useState(null);
@@ -112,7 +125,7 @@
 
       const showToast = (message, type = 'success') => {
         setToast({ message, type });
-        setTimeout(() => setToast(null), 4000);
+        setTimeout(() => setToast(null), 5000); 
       };
 
       const triggerConfirm = (title, message, onConfirmCallback) => {
@@ -140,7 +153,7 @@
         }
       };
 
-      // 清除金鑰設定（觸發重設）
+      // 清除金鑰設定
       const handleResetConfig = () => {
         triggerConfirm(
           "確定要重置資料庫設定嗎？",
@@ -152,7 +165,7 @@
         );
       };
 
-      // 點擊小助手標題觸發隱藏彩蛋重設
+      // 點擊小助手標題觸發隱藏重設
       const handleSecretClick = () => {
         setHiddenResetClicks(prev => {
           const next = prev + 1;
@@ -164,9 +177,41 @@
         });
       };
 
+      // 管理者登入邏輯
+      const handleAdminLoginSubmit = (e) => {
+        e.preventDefault();
+        // ------------------------------------------
+        // 🔑 預設管理者帳密設定 (您可以在此隨意修改)
+        // ------------------------------------------
+        const DEFAULT_ADMIN_USER = "admin";
+        const DEFAULT_ADMIN_PASS = "nyxshadeadmin";
+
+        if (adminUsername.toLowerCase() === DEFAULT_ADMIN_USER && adminPassword === DEFAULT_ADMIN_PASS) {
+          setIsAdminLoggedIn(true);
+          sessionStorage.setItem('artale_is_admin', 'true');
+          setShowAdminLoginModal(false);
+          setAdminUsername('');
+          setAdminPassword('');
+          showToast("🔑 管理者權限驗證成功！已啟用後台控制。");
+          setShowAdminConsole(true);
+        } else {
+          showToast("帳號或密碼錯誤，請重新確認！", "error");
+        }
+      };
+
+      const handleAdminLogout = () => {
+        setIsAdminLoggedIn(false);
+        sessionStorage.removeItem('artale_is_admin');
+        setShowAdminConsole(false);
+        showToast("已成功登出管理者模式。");
+      };
+
       // 初始化 Firebase
       useEffect(() => {
-        if (!dbConfig) return;
+        if (!dbConfig) {
+          setDbStatus('no-config');
+          return;
+        }
         try {
           let app;
           if (firebase.apps.length === 0) {
@@ -179,16 +224,17 @@
           
           setDb(firestoreDb);
           setAuth(firebaseAuth);
-          setFirebaseReady(true);
+          setDbStatus('connecting');
         } catch (err) {
           console.error(err);
-          alert("Firebase 初始化失敗，可能是您的金鑰有誤，請點擊重設。");
+          setDbStatus('error');
+          alert("Firebase 初始化失敗，可能是您的金鑰有誤，請點擊底部的管理登入重置。");
         }
       }, [dbConfig]);
 
-      // 身份驗證監聽
+      // 身份驗證與登入監聽
       useEffect(() => {
-        if (!firebaseReady || !auth) return;
+        if (!auth || !db) return;
 
         const initAuth = async () => {
           try {
@@ -198,19 +244,23 @@
               await auth.signInAnonymously();
             }
           } catch (error) {
-            console.error(error);
-            showToast("登入失敗，請重試", "error");
+            console.error("Firebase 登入失敗：", error);
+            setDbStatus('error');
+            showToast(`登入失敗: ${error.message} (請確認 Firebase 是否已開啟「匿名登入」功能)`, "error");
           }
         };
 
         initAuth();
         const unsubscribe = auth.onAuthStateChanged((currentUser) => {
           setUser(currentUser);
+          if (currentUser) {
+            setDbStatus('connected');
+          }
         });
         return () => unsubscribe();
-      }, [firebaseReady, auth]);
+      }, [auth, db]);
 
-      // 個人檔案載入
+      // 個人檔案載入與後台靜態同步
       useEffect(() => {
         if (!user || !db) return;
 
@@ -219,37 +269,114 @@
             const profileRef = db.doc(`artifacts/${appId}/users/${user.uid}/profile/info`);
             const docSnap = await profileRef.get();
             if (docSnap.exists) {
-              setProfile(docSnap.data());
+              const data = docSnap.data();
+              const loadedProfile = {
+                ign: data.ign || '',
+                job: data.job || '主教',
+                level: Number(data.level) || 120
+              };
+              setProfile(loadedProfile);
+
+              // [背景同步] 讓管理員能夠在後台看見此成員並進行管理
+              db.doc(`artifacts/${appId}/public/data/registered_users/${user.uid}`).set({
+                userId: user.uid,
+                ign: loadedProfile.ign,
+                job: loadedProfile.job,
+                level: loadedProfile.level,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+              }).catch(e => console.error("背景成員名冊同步失敗：", e));
+
             } else {
               setShowProfileModal(true);
             }
             setProfileLoaded(true);
           } catch (err) {
-            console.error(err);
+            console.error("載入個人檔案失敗：", err);
           }
         };
         fetchProfile();
       }, [user, db]);
 
+      // 監聽所有已註冊隊員名冊 (僅限管理者模式加載，節省流量)
+      useEffect(() => {
+        if (!user || !db || !isAdminLoggedIn) return;
+
+        const regUsersCollection = db.collection(`artifacts/${appId}/public/data/registered_users`);
+        const unsubscribe = regUsersCollection.onSnapshot((snapshot) => {
+          const usersList = [];
+          snapshot.forEach((doc) => {
+            usersList.push({ id: doc.id, ...doc.data() });
+          });
+          usersList.sort((a, b) => b.level - a.level);
+          setRegisteredUsers(usersList);
+        }, (error) => {
+          console.error("讀取成員清單發生錯誤：", error);
+        });
+
+        return () => unsubscribe();
+      }, [user, db, isAdminLoggedIn]);
+
+      // 儲存角色檔案（防呆 + 雙重同步寫入）
       const saveProfile = async (e) => {
         e.preventDefault();
-        if (!user || !db) return;
+        if (!user || !db) {
+          showToast("尚未連線至資料庫，請稍後再試！", "error");
+          return;
+        }
         if (!profile.ign.trim()) {
           showToast("請輸入遊戲 ID (IGN)！", "error");
           return;
         }
+
+        setIsSavingProfile(true);
         try {
-          const profileRef = db.doc(`artifacts/${appId}/users/${user.uid}/profile/info`);
-          await profileRef.set({
+          const profileData = {
             ign: profile.ign.trim(),
             job: profile.job,
-            level: Number(profile.level) || 120
+            level: Number(profile.level) || 120,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          };
+
+          // 1. 寫入個人私有檔案 (Rule 1)
+          const profileRef = db.doc(`artifacts/${appId}/users/${user.uid}/profile/info`);
+          await profileRef.set(profileData);
+
+          // 2. 寫入公用成員清單以供管理者後台管理 (Rule 1)
+          const publicRef = db.doc(`artifacts/${appId}/public/data/registered_users/${user.uid}`);
+          await publicRef.set({
+            userId: user.uid,
+            ...profileData
           });
+
           setShowProfileModal(false);
           showToast("個人檔案更新成功！");
         } catch (err) {
-          showToast("檔案儲存失敗", "error");
+          console.error("儲存個人檔案發生錯誤：", err);
+          showToast(`儲存失敗: ${err.message} (請確認 Firebase 是否已開啟匿名登入)`, "error");
+        } finally {
+          setIsSavingProfile(false);
         }
+      };
+
+      // 管理者專用：徹底刪除某隊員的角色資料卡
+      const handleDeleteUserProfile = (targetUserId, targetIgn) => {
+        triggerConfirm(
+          `確定要刪除玩家 【${targetIgn}】 的角色資料嗎？`,
+          "這將會徹底抹除該隊員在資料庫中的角色卡紀錄（IGN、職業、等級），使其下次登入時必須重新設定。此操作不可逆！",
+          async () => {
+            try {
+              // 1. 刪除公用後台列表紀錄
+              await db.doc(`artifacts/${appId}/public/data/registered_users/${targetUserId}`).delete();
+              // 2. 嘗試刪除該玩家的個人私有檔案
+              await db.doc(`artifacts/${appId}/users/${targetUserId}/profile/info`).delete();
+              
+              showToast(`已成功刪除 【${targetIgn}】 的所有角色檔案！`);
+            } catch (err) {
+              console.error(err);
+              showToast(`刪除失敗: ${err.message}`, "error");
+            }
+          }
+        );
       };
 
       // 實時監聽組隊列表
@@ -269,7 +396,7 @@
           });
           setRaids(raidsData);
         }, (error) => {
-          console.error(error);
+          console.error("即時同步發生錯誤：", error);
         });
         return () => unsubscribe();
       }, [user, db]);
@@ -305,7 +432,7 @@
           setIsCreating(false);
           showToast("成功發起遠征隊揪團！");
         } catch (err) {
-          showToast("建立失敗，請稍後再試", "error");
+          showToast(`建立失敗: ${err.message}`, "error");
         }
       };
 
@@ -379,7 +506,7 @@
           await raidRef.update({ votes: updatedVotes });
           showToast("投票成功！");
         } catch (err) {
-          showToast("投票失敗", "error");
+          showToast(`投票失敗: ${err.message}`, "error");
         }
       };
 
@@ -412,7 +539,7 @@
           setSignUpMemo('');
           showToast("報名成功！已進入候補名單。");
         } catch (err) {
-          showToast("報名失敗", "error");
+          showToast(`報名失敗: ${err.message}`, "error");
         }
       };
 
@@ -597,494 +724,532 @@
       }
 
       // ------------------------------------------
-      // 主要應用程式畫面 (Renders)
+      // 💡 修正核心：動態計算 activeRaid、boss 與 isCreator
       // ------------------------------------------
       const activeRaid = raids.find(r => r.id === currentRaidId);
-      const isCreator = activeRaid ? activeRaid.creatorId === user?.uid : false;
       const boss = activeRaid ? BOSS_LIST.find(b => b.id === activeRaid.bossId) : null;
+      const isCreator = user && activeRaid ? (user.uid === activeRaid.creatorId || isAdminLoggedIn) : false;
 
       return (
-        <div className="bg-slate-950 text-slate-100 min-h-screen font-sans">
-          {/* 頂部導航列 */}
-          <header className="sticky top-0 z-30 bg-slate-900/80 backdrop-blur border-b border-slate-800 px-4 py-3 shadow-lg">
-            <div className="max-w-6xl mx-auto flex items-center justify-between">
-              <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentRaidId(null)}>
-                <div className="text-3xl">🍁</div>
+        <div className="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col justify-between">
+          
+          <div>
+            {/* 頂部導航列 - 100% 乾淨防呆，提供實時連線狀態 */}
+            <header className="sticky top-0 z-30 bg-slate-900/80 backdrop-blur border-b border-slate-800 px-4 py-3 shadow-lg">
+              <div className="max-w-6xl mx-auto flex items-center justify-between">
+                <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentRaidId(null)}>
+                  <div className="text-3xl">🍁</div>
+                  <div>
+                    <h1 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">
+                      NyxShade遠征隊組隊系統
+                    </h1>
+                    <p 
+                      onClick={handleSecretClick}
+                      className="text-[10px] text-slate-500 select-none cursor-pointer active:text-amber-400 hover:text-slate-400 transition"
+                      title="快速點擊5次可觸發資料庫管理"
+                    >
+                      MSW 懷舊楓之谷出團小助手
+                    </p>
+                  </div>
+                </div>
+
+                {/* 右側玩家角色卡 + 🟢 資料庫連線狀態燈 */}
+                <div className="flex items-center space-x-3">
+                  {/* 連線狀態標記 */}
+                  <div className="hidden sm:block">
+                    {dbStatus === 'connecting' && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-1 rounded-lg text-xs font-semibold animate-pulse">⏳ 正在連線資料庫</span>}
+                    {dbStatus === 'connected' && <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded-lg text-xs font-semibold">🟢 連線成功</span>}
+                    {dbStatus === 'error' && <span className="bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-1 rounded-lg text-xs font-semibold">⚠️ 連線異常</span>}
+                  </div>
+
+                  {profileLoaded ? (
+                    <button 
+                      onClick={() => setShowProfileModal(true)}
+                      className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-500 rounded-lg px-3 py-1.5 flex items-center space-x-2 transition text-sm"
+                    >
+                      <span className="text-indigo-400">🛡️</span>
+                      <span className="font-semibold text-slate-200">
+                        {profile.ign ? `${profile.ign} (${profile.job})` : '設定遊戲ID'}
+                      </span>
+                    </button>
+                  ) : (
+                    <div className="h-8 w-24 bg-slate-800 animate-pulse rounded-lg" />
+                  )}
+                </div>
+              </div>
+            </header>
+
+            {/* 主體內容 */}
+            <main className="max-w-6xl mx-auto p-4 md:p-6 pb-20">
+              
+              {/* 手機板的狀態提示 */}
+              <div className="sm:hidden mb-4 text-center">
+                {dbStatus === 'connecting' && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1 rounded-full text-[10px] font-semibold animate-pulse">⏳ 正在連線資料庫</span>}
+                {dbStatus === 'connected' && <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full text-[10px] font-semibold">🟢 連線成功</span>}
+                {dbStatus === 'error' && <span className="bg-rose-500/10 text-rose-400 border border-rose-500/20 px-3 py-1 rounded-full text-[10px] font-semibold">⚠️ 連線異常</span>}
+              </div>
+
+              {/* 1. 大廳列表 */}
+              {!activeRaid ? (
                 <div>
-                  <h1 className="text-xl font-bold bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">
-                    NyxShade遠征隊組隊系統
-                  </h1>
-                  <p 
-                    onClick={handleSecretClick}
-                    className="text-[10px] text-slate-400 select-none cursor-default active:text-amber-400"
-                    title="隱藏的設定區"
-                  >
-                    MSW 懷舊楓之谷出團小助手
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                {profileLoaded ? (
-                  <button 
-                    onClick={() => setShowProfileModal(true)}
-                    className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-500 rounded-lg px-3 py-1.5 flex items-center space-x-2 transition text-sm"
-                  >
-                    <span className="text-indigo-400">🛡️</span>
-                    <span className="font-semibold text-slate-200">
-                      {profile.ign ? `${profile.ign} (${profile.job})` : '設定遊戲ID'}
-                    </span>
-                  </button>
-                ) : (
-                  <div className="h-8 w-24 bg-slate-800 animate-pulse rounded-lg" />
-                )}
-              </div>
-            </div>
-          </header>
-
-          <main className="max-w-6xl mx-auto p-4 md:p-6 pb-20">
-            {/* 1. 大廳列表 */}
-            {!activeRaid ? (
-              <div>
-                <div className="mb-8 p-6 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 shadow-xl relative overflow-hidden">
-                  <div className="absolute top-0 right-0 opacity-10 text-9xl">🍁</div>
-                  <div className="relative z-10 max-w-2xl">
-                    <span className="px-3 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs rounded-full font-semibold">
-                      跨平台多端同步
-                    </span>
-                    <h2 className="text-2xl md:text-3xl font-extrabold mt-3 text-white">Artale 組隊</h2>
-                    <p className="text-slate-400 mt-2 text-sm md:text-base whitespace-pre-line">隊員線上自主投票時間、報名打王</p>
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      <button 
-                        onClick={() => setIsCreating(true)}
-                        className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg transition flex items-center space-x-2 text-sm"
-                      >
-                        <span>➕ 發起全新遠征隊</span>
-                      </button>
-                      <button 
-                        onClick={() => setShowProfileModal(true)}
-                        className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold px-4 py-2.5 rounded-xl border border-slate-700 transition text-sm"
-                      >
-                        ⚙️ 設定我的角色資料
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold text-slate-200 flex items-center space-x-2">
-                    <span>⚔️ 目前進行中的遠征隊</span>
-                    <span className="bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full text-xs font-normal">
-                      {raids.length}
-                    </span>
-                  </h3>
-                </div>
-
-                {raids.length === 0 ? (
-                  <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-12 text-center">
-                    <span className="text-5xl block mb-4">🦖</span>
-                    <h4 className="text-slate-300 font-bold text-lg">目前沒有任何發起的遠征隊</h4>
-                    <p className="text-slate-500 text-sm mt-1">立刻點選上方「發起全新遠征隊」來揪團打王吧！</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {raids.map((raid) => {
-                      const boss = BOSS_LIST.find(b => b.id === raid.bossId);
-                      const participantCount = raid.participants?.length || 0;
-                      const voteCount = raid.votes?.length || 0;
-
-                      return (
-                        <div 
-                          key={raid.id}
-                          onClick={() => setCurrentRaidId(raid.id)}
-                          className="bg-slate-900 hover:bg-slate-800/90 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 cursor-pointer transition transform hover:-translate-y-0.5 shadow-md flex flex-col justify-between"
+                  <div className="mb-8 p-6 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 shadow-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 opacity-10 text-9xl">🍁</div>
+                    <div className="relative z-10 max-w-2xl">
+                      <span className="px-3 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs rounded-full font-semibold">
+                        跨平台多端同步
+                      </span>
+                      <h2 className="text-2xl md:text-3xl font-extrabold mt-3 text-white">Artale 組隊</h2>
+                      <p className="text-slate-400 mt-2 text-sm md:text-base whitespace-pre-line">隊員線上自主投票時間、報名打王</p>
+                      <div className="mt-5 flex flex-wrap gap-2">
+                        <button 
+                          onClick={() => setIsCreating(true)}
+                          className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg transition flex items-center space-x-2 text-sm"
                         >
-                          <div>
-                            <div className="flex items-center justify-between mb-3">
-                              <span className={`px-2.5 py-1 text-xs font-bold rounded-lg text-white bg-gradient-to-r ${boss?.color || 'from-slate-600 to-slate-700'}`}>
-                                {boss?.icon} {boss?.name.split(' (')[0]}
-                              </span>
-                              <span className="text-xs text-slate-500">
-                                開團者: <span className="text-slate-300 font-semibold">{raid.creatorIgn}</span>
-                              </span>
-                            </div>
-
-                            <h4 className="text-lg font-bold text-slate-100 mb-2 line-clamp-1">{raid.title}</h4>
-                            <p className="text-slate-400 text-xs line-clamp-2 mb-4 bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/60 min-h-[48px]">
-                              {raid.notes || "沒有提供備註說明。"}
-                            </p>
-                          </div>
-
-                          <div className="flex items-center justify-between text-xs border-t border-slate-800 pt-3">
-                            <div className="flex space-x-4 text-slate-400">
-                              <span className="flex items-center space-x-1">
-                                <span>👥</span>
-                                <strong>{participantCount}</strong>
-                                <span>人報名</span>
-                              </span>
-                              <span className="flex items-center space-x-1">
-                                <span>🗳️</span>
-                                <strong>{voteCount}</strong>
-                                <span>人投票</span>
-                              </span>
-                            </div>
-                            <span className="text-indigo-400 font-semibold hover:underline flex items-center space-x-1">
-                              <span>進入組隊系統 ➜</span>
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ) : (
-              /* 2. 遠征隊詳細主控台 */
-              <div>
-                <button 
-                  onClick={() => setCurrentRaidId(null)}
-                  className="mb-5 flex items-center space-x-1.5 text-sm text-slate-400 hover:text-white transition"
-                >
-                  <span>⬅ 返回大廳列表</span>
-                </button>
-
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* 左欄：基本資訊與投票 */}
-                  <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-                      <div className={`p-6 bg-gradient-to-r ${boss?.color} text-white relative`}>
-                        <div className="absolute right-6 top-6 opacity-20 text-6xl">{boss?.icon}</div>
-                        <span className="bg-black/30 text-white font-bold text-xs px-2.5 py-1 rounded-full uppercase tracking-wider backdrop-blur">
-                          遠征隊出征
-                        </span>
-                        <h2 className="text-2xl font-extrabold mt-3">{activeRaid.title}</h2>
-                        <p className="text-white/80 text-sm mt-1.5">{boss?.name} • 團隊容量最多 {boss?.maxPlayers} 人</p>
-                      </div>
-
-                      <div className="p-6 space-y-4">
-                        <div>
-                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">隊伍備註 / 戰術要求</h4>
-                          <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800/80 text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
-                            {activeRaid.notes || "團長沒有提供詳細備註。"}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs text-slate-400 border-t border-slate-850">
-                          <div>
-                            發起人：<strong className="text-slate-300">{activeRaid.creatorIgn}</strong>
-                          </div>
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => copyGroupFormat(activeRaid)}
-                              className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1.5 rounded-lg transition text-xs"
-                            >
-                              📋 複製公告排班表
-                            </button>
-                            {isCreator && (
-                              <button
-                                onClick={() => handleDeleteRaid(activeRaid.id)}
-                                className="bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900 text-rose-300 px-3 py-1.5 rounded-lg transition text-xs"
-                              >
-                                🗑️ 刪除此團
-                              </button>
-                            )}
-                          </div>
-                        </div>
+                          <span>➕ 發起全新遠征隊</span>
+                        </button>
+                        <button 
+                          onClick={() => setShowProfileModal(true)}
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold px-4 py-2.5 rounded-xl border border-slate-700 transition text-sm"
+                        >
+                          ⚙️ 設定我的角色資料
+                        </button>
                       </div>
                     </div>
+                  </div>
 
-                    {/* 時間投票區 */}
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-                      <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
-                        <div>
-                          <h3 className="text-lg font-bold text-white">📅 候選出團時間投票</h3>
-                          <p className="text-xs text-slate-400 mt-1">請選擇您可以配合的時間。{isCreator && <span className="text-amber-400 font-semibold">（團長可一鍵錄取投票人員）</span>}</p>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold text-slate-200 flex items-center space-x-2">
+                      <span>⚔️ 目前進行中的遠征隊</span>
+                      <span className="bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full text-xs font-normal">
+                        {raids.length}
+                      </span>
+                    </h3>
+                  </div>
+
+                  {raids.length === 0 ? (
+                    <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-12 text-center">
+                      <span className="text-5xl block mb-4">🦖</span>
+                      <h4 className="text-slate-300 font-bold text-lg">目前沒有任何發起的遠征隊</h4>
+                      <p className="text-slate-500 text-sm mt-1">立刻點選上方「發起全新遠征隊」來揪團打王吧！</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {raids.map((raid) => {
+                        const bItem = BOSS_LIST.find(b => b.id === raid.bossId);
+                        const participantCount = raid.participants?.length || 0;
+                        const voteCount = raid.votes?.length || 0;
+
+                        return (
+                          <div 
+                            key={raid.id}
+                            onClick={() => setCurrentRaidId(raid.id)}
+                            className="bg-slate-900 hover:bg-slate-800/90 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 cursor-pointer transition transform hover:-translate-y-0.5 shadow-md flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between mb-3">
+                                <span className={`px-2.5 py-1 text-xs font-bold rounded-lg text-white bg-gradient-to-r ${bItem?.color || 'from-slate-600 to-slate-700'}`}>
+                                  {bItem?.icon} {bItem?.name.split(' (')[0]}
+                                </span>
+                                <span className="text-xs text-slate-500">
+                                  開團者: <span className="text-slate-300 font-semibold">{raid.creatorIgn}</span>
+                                </span>
+                              </div>
+
+                              <h4 className="text-lg font-bold text-slate-100 mb-2 line-clamp-1">{raid.title}</h4>
+                              <p className="text-slate-400 text-xs line-clamp-2 mb-4 bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/60 min-h-[48px]">
+                                {raid.notes || "沒有提供備註說明。"}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center justify-between text-xs border-t border-slate-800 pt-3">
+                              <div className="flex space-x-4 text-slate-400">
+                                <span className="flex items-center space-x-1">
+                                  <span>👥</span>
+                                  <strong>{participantCount}</strong>
+                                  <span>人報名</span>
+                                </span>
+                                <span className="flex items-center space-x-1">
+                                  <span>🗳️</span>
+                                  <strong>{voteCount}</strong>
+                                  <span>人投票</span>
+                                </span>
+                              </div>
+                              <span className="text-indigo-400 font-semibold hover:underline flex items-center space-x-1">
+                                <span>進入組隊系統 ➜</span>
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* 2. 遠征隊詳細主控台 */
+                <div>
+                  <button 
+                    onClick={() => setCurrentRaidId(null)}
+                    className="mb-5 flex items-center space-x-1.5 text-sm text-slate-400 hover:text-white transition"
+                  >
+                    <span>⬅ 返回大廳列表</span>
+                  </button>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* 左欄：基本資訊與投票 */}
+                    <div className="lg:col-span-2 space-y-6">
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                        <div className={`p-6 bg-gradient-to-r ${boss?.color} text-white relative`}>
+                          <div className="absolute right-6 top-6 opacity-20 text-6xl">{boss?.icon}</div>
+                          <span className="bg-black/30 text-white font-bold text-xs px-2.5 py-1 rounded-full uppercase tracking-wider backdrop-blur">
+                            遠征隊出征
+                          </span>
+                          <h2 className="text-2xl font-extrabold mt-3">{activeRaid.title}</h2>
+                          <p className="text-white/80 text-sm mt-1.5">{boss?.name} • 團隊容量最多 {boss?.maxPlayers} 人</p>
                         </div>
-                        <span className="text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-1 rounded-md font-semibold">
-                          多人在線同步
-                        </span>
+
+                        <div className="p-6 space-y-4">
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">隊伍備註 / 戰術要求</h4>
+                            <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800/80 text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                              {activeRaid.notes || "團長沒有提供詳細備註。"}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs text-slate-400 border-t border-slate-855">
+                            <div>
+                              發起人：<strong className="text-slate-300">{activeRaid.creatorIgn}</strong>
+                            </div>
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => copyGroupFormat(activeRaid)}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1.5 rounded-lg transition text-xs animate-pulse"
+                              >
+                                📋 複製公告排班表
+                              </button>
+                              {isCreator && (
+                                <button
+                                  onClick={() => handleDeleteRaid(activeRaid.id)}
+                                  className="bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900 text-rose-300 px-3 py-1.5 rounded-lg transition text-xs"
+                                >
+                                  🗑️ 刪除此團
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="space-y-6">
-                        {activeRaid.proposedTimes?.map((time, idx) => {
-                          const yesVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'yes') || [];
-                          const maybeVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'maybe') || [];
-                          const noVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'no') || [];
+                      {/* 時間投票區 */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                        <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
+                          <div>
+                            <h3 className="text-lg font-bold text-white">📅 候選出團時間投票</h3>
+                            <p className="text-xs text-slate-400 mt-1">請選擇您可以配合的時間。{isCreator && <span className="text-amber-400 font-semibold">（團長可一鍵錄取投票人員）</span>}</p>
+                          </div>
+                          <span className="text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-1 rounded-md font-semibold">
+                            多人在線同步
+                          </span>
+                        </div>
 
-                          const myVoteRecord = activeRaid.votes?.find(v => v.userId === user?.uid);
-                          const myChoice = myVoteRecord?.votes?.[idx] || null;
+                        <div className="space-y-6">
+                          {activeRaid.proposedTimes?.map((time, idx) => {
+                            const yesVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'yes') || [];
+                            const maybeVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'maybe') || [];
+                            const noVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'no') || [];
 
-                          const renderVoterBadges = (votersList, badgeColor, emoji) => {
-                            if (votersList.length === 0) return null;
+                            const myVoteRecord = activeRaid.votes?.find(v => v.userId === user?.uid);
+                            const myChoice = myVoteRecord?.votes?.[idx] || null;
+
+                            const renderVoterBadges = (votersList, badgeColor, emoji) => {
+                              if (votersList.length === 0) return null;
+                              return (
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  {votersList.map((voter) => {
+                                    const alreadyInRaid = activeRaid.participants?.some(p => p.userId === voter.userId);
+                                    return (
+                                      <div 
+                                        key={voter.userId}
+                                        className="inline-flex items-center space-x-1.5 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg text-xs transition"
+                                      >
+                                        <span className={badgeColor}>{emoji}</span>
+                                        <span className="font-semibold text-slate-200">{voter.ign}</span>
+                                        <span className="text-[10px] text-slate-500">
+                                          ({voter.job || '無職業'} Lv.{voter.level || '?'})
+                                        </span>
+                                        {isCreator && (
+                                          alreadyInRaid ? (
+                                            <span className="text-emerald-500 font-bold ml-1.5">✓</span>
+                                          ) : (
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleQuickEnroll(activeRaid.id, voter);
+                                              }}
+                                              className="ml-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-1.5 py-0.5 rounded text-[10px] transition active:scale-95"
+                                            >
+                                              ➕ 錄取
+                                            </button>
+                                          )
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            };
+
                             return (
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {votersList.map((voter) => {
-                                  const alreadyInRaid = activeRaid.participants?.some(p => p.userId === voter.userId);
-                                  return (
-                                    <div 
-                                      key={voter.userId}
-                                      className="inline-flex items-center space-x-1.5 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg text-xs transition"
+                              <div key={idx} className="p-4 bg-slate-950/40 rounded-xl border border-slate-800/80 flex flex-col gap-4">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                  <div className="flex-1">
+                                    <span className="text-xs font-semibold text-indigo-400">候選時間 #{idx + 1}</span>
+                                    <h4 className="text-base font-bold text-slate-200 mt-0.5">{formatDateTime(time)}</h4>
+                                  </div>
+
+                                  <div className="flex items-center space-x-1.5">
+                                    <button
+                                      onClick={() => handleVoteTime(activeRaid.id, idx, 'yes')}
+                                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${myChoice === 'yes' ? 'bg-emerald-600 text-white shadow shadow-emerald-500/30' : 'bg-slate-800 hover:bg-slate-750 text-slate-300'}`}
                                     >
-                                      <span className={badgeColor}>{emoji}</span>
-                                      <span className="font-semibold text-slate-200">{voter.ign}</span>
-                                      <span className="text-[10px] text-slate-500">
-                                        ({voter.job || '無職業'} Lv.{voter.level || '?'})
-                                      </span>
-                                      {isCreator && (
-                                        alreadyInRaid ? (
-                                          <span className="text-emerald-500 font-bold ml-1.5">✓</span>
-                                        ) : (
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleQuickEnroll(activeRaid.id, voter);
-                                            }}
-                                            className="ml-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-1.5 py-0.5 rounded text-[10px] transition"
-                                          >
-                                            ➕ 錄取
-                                          </button>
-                                        )
-                                      )}
+                                      🟢 可以
+                                    </button>
+                                    <button
+                                      onClick={() => handleVoteTime(activeRaid.id, idx, 'maybe')}
+                                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${myChoice === 'maybe' ? 'bg-amber-600 text-white shadow shadow-amber-500/30' : 'bg-slate-800 hover:bg-slate-750 text-slate-300'}`}
+                                    >
+                                      🟡 也許
+                                    </button>
+                                    <button
+                                      onClick={() => handleVoteTime(activeRaid.id, idx, 'no')}
+                                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${myChoice === 'no' ? 'bg-rose-600 text-white shadow shadow-rose-500/30' : 'bg-slate-800 hover:bg-slate-750 text-slate-300'}`}
+                                    >
+                                      🔴 不行
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="border-t border-slate-855/60 pt-2 space-y-2">
+                                  {yesVotes.length > 0 && (
+                                    <div>
+                                      <span className="text-[11px] text-emerald-400 font-bold block mb-1">🟢 可以配合的隊員：</span>
+                                      {renderVoterBadges(yesVotes, 'text-emerald-400', '🟢')}
                                     </div>
-                                  );
-                                })}
+                                  )}
+                                  {maybeVotes.length > 0 && (
+                                    <div>
+                                      <span className="text-[11px] text-amber-400 font-bold block mb-1">🟡 可能配合的隊員：</span>
+                                      {renderVoterBadges(maybeVotes, 'text-amber-400', '🟡')}
+                                    </div>
+                                  )}
+                                  {noVotes.length > 0 && (
+                                    <div>
+                                      <span className="text-[11px] text-rose-400 font-bold block mb-1">🔴 無法配合的隊員：</span>
+                                      {renderVoterBadges(noVotes, 'text-rose-400', '🔴')}
+                                    </div>
+                                  )}
+                                  {yesVotes.length === 0 && maybeVotes.length === 0 && noVotes.length === 0 && (
+                                    <span className="text-slate-600 text-xs italic block py-1">目前尚無人對此時間段投票</span>
+                                  )}
+                                </div>
                               </div>
                             );
-                          };
-
-                          return (
-                            <div key={idx} className="p-4 bg-slate-950/40 rounded-xl border border-slate-800/80 flex flex-col gap-4">
-                              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                <div className="flex-1">
-                                  <span className="text-xs font-semibold text-indigo-400">候選時間 #{idx + 1}</span>
-                                  <h4 className="text-base font-bold text-slate-200 mt-0.5">{formatDateTime(time)}</h4>
-                                </div>
-
-                                <div className="flex items-center space-x-1.5">
-                                  <button
-                                    onClick={() => handleVoteTime(activeRaid.id, idx, 'yes')}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${myChoice === 'yes' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'}`}
-                                  >
-                                    🟢 可以
-                                  </button>
-                                  <button
-                                    onClick={() => handleVoteTime(activeRaid.id, idx, 'maybe')}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${myChoice === 'maybe' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-300'}`}
-                                  >
-                                    🟡 也許
-                                  </button>
-                                  <button
-                                    onClick={() => handleVoteTime(activeRaid.id, idx, 'no')}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${myChoice === 'no' ? 'bg-rose-600 text-white' : 'bg-slate-800 text-slate-300'}`}
-                                  >
-                                    🔴 不行
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="border-t border-slate-855/60 pt-2 space-y-2">
-                                {yesVotes.length > 0 && (
-                                  <div>
-                                    <span className="text-[11px] text-emerald-400 font-bold block mb-1">🟢 可以配合的隊員：</span>
-                                    {renderVoterBadges(yesVotes, 'text-emerald-400', '🟢')}
-                                  </div>
-                                )}
-                                {maybeVotes.length > 0 && (
-                                  <div>
-                                    <span className="text-[11px] text-amber-400 font-bold block mb-1">🟡 可能配合的隊員：</span>
-                                    {renderVoterBadges(maybeVotes, 'text-amber-400', '🟡')}
-                                  </div>
-                                )}
-                                {noVotes.length > 0 && (
-                                  <div>
-                                    <span className="text-[11px] text-rose-400 font-bold block mb-1">🔴 無法配合的隊員：</span>
-                                    {renderVoterBadges(noVotes, 'text-rose-400', '🔴')}
-                                  </div>
-                                )}
-                                {yesVotes.length === 0 && maybeVotes.length === 0 && noVotes.length === 0 && (
-                                  <span className="text-slate-600 text-xs italic block py-1">目前尚無人對此時間段投票</span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
+                          })}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* 右欄：報名與出團管理 */}
-                  <div className="space-y-6">
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-                      <h3 className="text-lg font-bold text-white mb-3">✍️ 報名此遠征隊</h3>
-                      {activeRaid.participants?.some(p => p.userId === user?.uid) ? (
-                        <div className="space-y-3">
-                          <div className="p-3 bg-indigo-950/40 border border-indigo-900 rounded-xl text-center">
-                            <p className="text-sm font-semibold text-indigo-300">🎉 您已經成功報名本遠征隊！</p>
-                            <p className="text-[10px] text-slate-400 mt-1">目前處於候補，等待團長分配小隊。</p>
-                          </div>
-                          <button
-                            onClick={() => handleCancelSignUp(activeRaid.id)}
-                            className="w-full bg-slate-800 hover:bg-rose-950/40 border border-slate-700 hover:border-rose-900 text-slate-400 hover:text-rose-300 font-bold py-2 rounded-xl transition text-sm"
-                          >
-                            取消報名離隊
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <div className="p-3 bg-slate-950/50 rounded-xl border border-slate-855 text-xs text-slate-400 space-y-1.5">
-                            <p>角色資訊：</p>
-                            <p className="text-slate-200 font-semibold flex flex-wrap gap-1.5">
-                              IGN: {profile.ign || "未填寫"} | {profile.job} | Lv.{profile.level}
-                            </p>
-                            <button onClick={() => setShowProfileModal(true)} className="text-indigo-400 hover:underline font-bold text-[10px]">
-                              修改角色卡 ✎
+                    {/* 右欄：報名與出團管理 */}
+                    <div className="space-y-6">
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                        <h3 className="text-lg font-bold text-white mb-3">✍️ 報名此遠征隊</h3>
+                        {activeRaid.participants?.some(p => p.userId === user?.uid) ? (
+                          <div className="space-y-3">
+                            <div className="p-3 bg-indigo-950/40 border border-indigo-900 rounded-xl text-center">
+                              <p className="text-sm font-semibold text-indigo-300">🎉 您已經成功報名本遠征隊！</p>
+                              <p className="text-[10px] text-slate-400 mt-1">目前處於候補，等待團長分配小隊。</p>
+                            </div>
+                            <button
+                              onClick={() => handleCancelSignUp(activeRaid.id)}
+                              className="w-full bg-slate-800 hover:bg-rose-950/40 border border-slate-700 hover:border-rose-900 text-slate-400 hover:text-rose-300 font-bold py-2 rounded-xl transition text-sm"
+                            >
+                              取消報名離隊
                             </button>
                           </div>
+                        ) : (
+                          <div className="space-y-4">
+                            <div className="p-3 bg-slate-950/50 rounded-xl border border-slate-855 text-xs text-slate-400 space-y-1.5">
+                              <p>角色資訊：</p>
+                              <p className="text-slate-200 font-semibold flex flex-wrap gap-1.5">
+                                IGN: {profile.ign || "未填寫"} | {profile.job} | Lv.{profile.level}
+                              </p>
+                              <button onClick={() => setShowProfileModal(true)} className="text-indigo-400 hover:underline font-bold text-[10px]">
+                                修改角色卡 ✎
+                              </button>
+                            </div>
 
-                          <div>
-                            <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">個人備註 (選填)</label>
-                            <input
-                              type="text"
-                              value={signUpMemo}
-                              onChange={(e) => setSignUpMemo(e.target.value)}
-                              placeholder="例：滿聖火、已洗血"
-                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm focus:outline-none text-slate-200"
-                            />
+                            <div>
+                              <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">個人備註 (選填)</label>
+                              <input
+                                type="text"
+                                value={signUpMemo}
+                                onChange={(e) => setSignUpMemo(e.target.value)}
+                                placeholder="例：滿聖火、已洗血"
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm focus:outline-none text-slate-200"
+                              />
+                            </div>
+
+                            <button
+                              onClick={() => handleSignUp(activeRaid.id)}
+                              className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white font-bold py-2.5 rounded-xl text-sm shadow"
+                            >
+                              立即報名 (排入候補)
+                            </button>
                           </div>
+                        )}
+                      </div>
 
+                      {isCreator && (
+                        <div className="bg-slate-900 border border-amber-500/20 rounded-2xl p-6 shadow-xl">
+                          <h3 className="text-md font-bold text-amber-400 mb-1">👑 團長排班工具</h3>
+                          <p className="text-xs text-slate-400 mb-4">使用下方分組名單中的按鈕將隊員歸類，完成後複製排班表即可貼回群組！</p>
                           <button
-                            onClick={() => handleSignUp(activeRaid.id)}
-                            className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white font-bold py-2.5 rounded-xl text-sm shadow"
+                            onClick={() => handleResetRaid(activeRaid.id)}
+                            className="w-full bg-slate-950 hover:bg-slate-850 border border-amber-500/30 text-amber-400 font-bold py-2.5 rounded-xl text-xs transition"
                           >
-                            立即報名 (排入候補)
+                            🔄 一鍵重置此團名單與投票
                           </button>
                         </div>
                       )}
                     </div>
-
-                    {isCreator && (
-                      <div className="bg-slate-900 border border-amber-500/20 rounded-2xl p-6 shadow-xl">
-                        <h3 className="text-md font-bold text-amber-400 mb-1">👑 團長排班工具</h3>
-                        <p className="text-xs text-slate-400 mb-4">使用下方分組名單中的按鈕將隊員歸類，完成後複製排班表即可貼回群組！</p>
-                        <button
-                          onClick={() => handleResetRaid(activeRaid.id)}
-                          className="w-full bg-slate-950 hover:bg-slate-850 border border-amber-500/30 text-amber-400 font-bold py-2.5 rounded-xl text-xs transition"
-                        >
-                          🔄 一鍵重置此團名單與投票
-                        </button>
-                      </div>
-                    )}
                   </div>
-                </div>
 
-                {/* 分組名單 */}
-                {(() => {
-                  const participants = activeRaid.participants || [];
-                  const party1 = participants.filter(p => p.party === '1');
-                  const party2 = participants.filter(p => p.party === '2');
-                  const party3 = participants.filter(p => p.party === '3');
-                  const reserves = participants.filter(p => p.party === 'reserve' || !p.party);
+                  {/* 分組名單 */}
+                  {(() => {
+                    const participants = activeRaid.participants || [];
+                    const party1 = participants.filter(p => p.party === '1');
+                    const party2 = participants.filter(p => p.party === '2');
+                    const party3 = participants.filter(p => p.party === '3');
+                    const reserves = participants.filter(p => p.party === 'reserve' || !p.party);
 
-                  const renderRosterGroup = (title, pList, groupKey, color) => (
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
-                          <h4 className="font-extrabold text-base flex items-center space-x-2">
-                            <span className={`w-3 h-3 rounded-full ${color}`} />
-                            <span>{title}</span>
-                          </h4>
-                          <span className="text-xs font-semibold bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">
-                            {pList.length} / 6
-                          </span>
-                        </div>
-
-                        {pList.length === 0 ? (
-                          <div className="py-8 text-center text-slate-600 text-xs italic">尚無隊員被分配到本隊</div>
-                        ) : (
-                          <div className="space-y-2">
-                            {pList.map((p, idx) => (
-                              <div key={p.userId} className="bg-slate-950/60 p-3 rounded-xl border border-slate-850 text-xs flex flex-col justify-between gap-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-bold text-slate-200">{idx + 1}. {p.ign}</span>
-                                  <span className="text-[10px] bg-slate-800 text-indigo-300 px-1.5 py-0.5 rounded font-bold">{p.job}</span>
-                                </div>
-                                <div className="text-slate-400 flex items-center justify-between text-[10px]">
-                                  <span>等級: <strong className="text-slate-300">{p.level}</strong></span>
-                                  {p.memo && <span className="text-amber-400 italic max-w-[140px] truncate">💬 {p.memo}</span>}
-                                </div>
-                                {isCreator && (
-                                  <div className="mt-2 pt-2 border-t border-slate-850/60 flex flex-wrap gap-1">
-                                    {groupKey !== '1' && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '1')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">一隊</button>}
-                                    {groupKey !== '2' && boss?.maxPlayers > 6 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '2')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">二隊</button>}
-                                    {groupKey !== '3' && boss?.maxPlayers > 12 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '3')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">三隊</button>}
-                                    {groupKey !== 'reserve' && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, 'reserve')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">候補</button>}
-                                    <button onClick={() => handleKickParticipant(activeRaid.id, p.userId)} className="bg-rose-950/40 text-rose-400 px-1.5 py-0.5 rounded text-[9px] ml-auto">剔除</button>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
+                    const renderRosterGroup = (title, pList, groupKey, color) => (
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+                            <h4 className="font-extrabold text-base flex items-center space-x-2">
+                              <span className={`w-3 h-3 rounded-full ${color}`} />
+                              <span>{title}</span>
+                            </h4>
+                            <span className="text-xs font-semibold bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">
+                              {pList.length} / 6
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  );
 
-                  return (
-                    <div className="mt-8">
-                      <h3 className="text-lg font-bold text-white mb-4">👥 遠征小隊分組名單</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        {renderRosterGroup('遠征一隊 (Party 1)', party1, '1', 'bg-blue-500')}
-                        {boss?.maxPlayers > 6 && renderRosterGroup('遠征二隊 (Party 2)', party2, '2', 'bg-emerald-500')}
-                        {boss?.maxPlayers > 12 && renderRosterGroup('遠征三隊 (Party 3)', party3, '3', 'bg-violet-500')}
-                        
-                        {/* 候補 */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
-                          <div>
-                            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
-                              <h4 className="font-extrabold text-base flex items-center space-x-2">
-                                <span className="w-3 h-3 rounded-full bg-slate-600" />
-                                <span>候補與預備名單</span>
-                              </h4>
-                              <span className="text-xs font-semibold bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">{reserves.length}</span>
+                          {pList.length === 0 ? (
+                            <div className="py-8 text-center text-slate-600 text-xs italic">尚無隊員被分配到本隊</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {pList.map((p, idx) => (
+                                <div key={p.userId} className="bg-slate-950/60 p-3 rounded-xl border border-slate-855 text-xs flex flex-col justify-between gap-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-slate-200">{idx + 1}. {p.ign}</span>
+                                    <span className="text-[10px] bg-slate-800 text-indigo-300 px-1.5 py-0.5 rounded font-bold">{p.job}</span>
+                                  </div>
+                                  <div className="text-slate-400 flex items-center justify-between text-[10px]">
+                                    <span>等級: <strong className="text-slate-300">{p.level}</strong></span>
+                                    {p.memo && <span className="text-amber-400 italic max-w-[140px] truncate">💬 {p.memo}</span>}
+                                  </div>
+                                  {isCreator && (
+                                    <div className="mt-2 pt-2 border-t border-slate-855 flex flex-wrap gap-1">
+                                      {groupKey !== '1' && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '1')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px] hover:bg-slate-750 transition">一隊</button>}
+                                      {groupKey !== '2' && boss?.maxPlayers > 6 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '2')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px] hover:bg-slate-750 transition">二隊</button>}
+                                      {groupKey !== '3' && boss?.maxPlayers > 12 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '3')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px] hover:bg-slate-750 transition">三隊</button>}
+                                      {groupKey !== 'reserve' && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, 'reserve')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px] hover:bg-slate-750 transition">候補</button>}
+                                      <button onClick={() => handleKickParticipant(activeRaid.id, p.userId)} className="bg-rose-950/40 text-rose-400 px-1.5 py-0.5 rounded text-[9px] ml-auto hover:bg-rose-900/40 transition">剔除</button>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
                             </div>
+                          )}
+                        </div>
+                      </div>
+                    );
 
-                            {reserves.length === 0 ? (
-                              <div className="py-8 text-center text-slate-600 text-xs italic">目前無任何候補人員</div>
-                            ) : (
-                              <div className="space-y-2">
-                                {reserves.map((p) => (
-                                  <div key={p.userId} className="bg-slate-950/60 p-3 rounded-xl border border-slate-850 text-xs flex flex-col justify-between gap-2">
-                                    <div className="flex items-center justify-between">
-                                      <span className="font-bold text-slate-200">{p.ign}</span>
-                                      <span className="text-[10px] bg-slate-800 text-indigo-300 px-1.5 py-0.5 rounded font-bold">{p.job}</span>
-                                    </div>
-                                    <div className="text-slate-400 flex items-center justify-between text-[10px]">
-                                      <span>等級: <strong className="text-slate-300">{p.level}</strong></span>
-                                      {p.memo && <span className="text-amber-400 italic max-w-[140px] truncate">💬 {p.memo}</span>}
-                                    </div>
-                                    {isCreator && (
-                                      <div className="mt-2 pt-2 border-t border-slate-855/60 flex flex-wrap gap-1">
-                                        <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '1')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">一隊</button>
-                                        {boss?.maxPlayers > 6 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '2')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">二隊</button>}
-                                        {boss?.maxPlayers > 12 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '3')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px]">三隊</button>}
-                                        <button onClick={() => handleKickParticipant(activeRaid.id, p.userId)} className="bg-rose-950/40 text-rose-400 px-1.5 py-0.5 rounded text-[9px] ml-auto">剔除</button>
-                                      </div>
-                                    )}
-                                  </div>
-                                ))}
+                    return (
+                      <div className="mt-8">
+                        <h3 className="text-lg font-bold text-white mb-4">👥 遠征小隊分組名單</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                          {renderRosterGroup('遠征一隊 (Party 1)', party1, '1', 'bg-blue-500')}
+                          {boss?.maxPlayers > 6 && renderRosterGroup('遠征二隊 (Party 2)', party2, '2', 'bg-emerald-500')}
+                          {boss?.maxPlayers > 12 && renderRosterGroup('遠征三隊 (Party 3)', party3, '3', 'bg-violet-500')}
+                          
+                          {/* 候補 */}
+                          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+                            <div>
+                              <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+                                <h4 className="font-extrabold text-base flex items-center space-x-2">
+                                  <span className="w-3 h-3 rounded-full bg-slate-600" />
+                                  <span>候補與預備名單</span>
+                                </h4>
+                                <span className="text-xs font-semibold bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">{reserves.length}</span>
                               </div>
-                            )}
+
+                              {reserves.length === 0 ? (
+                                <div className="py-8 text-center text-slate-600 text-xs italic">目前無任何候補人員</div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {reserves.map((p) => (
+                                    <div key={p.userId} className="bg-slate-950/60 p-3 rounded-xl border border-slate-850 text-xs flex flex-col justify-between gap-2">
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-bold text-slate-200">{p.ign}</span>
+                                        <span className="text-[10px] bg-slate-800 text-indigo-300 px-1.5 py-0.5 rounded font-bold">{p.job}</span>
+                                      </div>
+                                      <div className="text-slate-400 flex items-center justify-between text-[10px]">
+                                        <span>等級: <strong className="text-slate-300">{p.level}</strong></span>
+                                        {p.memo && <span className="text-amber-400 italic max-w-[140px] truncate">💬 {p.memo}</span>}
+                                      </div>
+                                      {isCreator && (
+                                        <div className="mt-2 pt-2 border-t border-slate-855/60 flex flex-wrap gap-1">
+                                          <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '1')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px] hover:bg-slate-750 transition">一隊</button>
+                                          {boss?.maxPlayers > 6 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '2')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px] hover:bg-slate-750 transition">二隊</button>}
+                                          {boss?.maxPlayers > 12 && <button onClick={() => handleAssignParty(activeRaid.id, p.userId, '3')} className="bg-slate-800 px-1.5 py-0.5 rounded text-[9px] hover:bg-slate-750 transition">三隊</button>}
+                                          <button onClick={() => handleKickParticipant(activeRaid.id, p.userId)} className="bg-rose-950/40 text-rose-400 px-1.5 py-0.5 rounded text-[9px] ml-auto hover:bg-rose-900/40 transition">剔除</button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-          </main>
+                    );
+                  })()}
+                </div>
+              )}
+            </main>
+          </div>
 
-          {/* A. 發起揪團彈出視窗 */}
+          {/* 底部隱私資訊與管理者後台按鈕 */}
+          <footer className="max-w-6xl mx-auto w-full px-4 py-8 text-center text-xs text-slate-700 border-t border-slate-900 mt-10">
+            <p>© 2026 NyxShade 遠征隊. All Rights Reserved.</p>
+            <div className="mt-2 space-x-3">
+              {isAdminLoggedIn ? (
+                <>
+                  <button onClick={() => setShowAdminConsole(true)} className="text-amber-500 hover:text-amber-400 hover:underline font-bold transition">🔑 開啟管理員控制台</button>
+                  <span className="text-slate-800">•</span>
+                  <button onClick={handleAdminLogout} className="text-rose-500 hover:text-rose-400 hover:underline transition">登出管理模式</button>
+                </>
+              ) : (
+                <button onClick={() => setShowAdminLoginModal(true)} className="text-slate-600 hover:text-slate-500 hover:underline transition">🔑 系統管理者登入</button>
+              )}
+            </div>
+          </footer>
+
+          {/* ==========================================
+              A. 發起揪團彈出視窗
+             ========================================== */}
           {isCreating && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl relative my-8">
@@ -1101,7 +1266,7 @@
                           key={b.id}
                           type="button"
                           onClick={() => setNewRaid({ ...newRaid, bossId: b.id })}
-                          className={`p-3 rounded-xl border text-left flex items-center space-x-2 ${newRaid.bossId === b.id ? 'bg-slate-800 border-indigo-500' : 'bg-slate-950 border-slate-850 text-slate-300'}`}
+                          className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition ${newRaid.bossId === b.id ? 'bg-slate-800 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-855 text-slate-300'}`}
                         >
                           <span className="text-2xl">{b.icon}</span>
                           <div>
@@ -1188,7 +1353,9 @@
             </div>
           )}
 
-          {/* B. 個人檔案編輯 */}
+          {/* ==========================================
+              B. 個人檔案編輯 (防呆防空防當機制已載入)
+             ========================================== */}
           {showProfileModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative">
@@ -1205,7 +1372,8 @@
                       value={profile.ign}
                       onChange={(e) => setProfile({ ...profile, ign: e.target.value })}
                       placeholder="例如：純粹"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
+                      disabled={isSavingProfile}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none disabled:opacity-50"
                     />
                   </div>
 
@@ -1213,8 +1381,9 @@
                     <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">四轉職業</label>
                     <select
                       value={profile.job}
+                      disabled={isSavingProfile}
                       onChange={(e) => setProfile({ ...profile, job: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none disabled:opacity-50"
                     >
                       {Object.entries(JOB_CATEGORIES).map(([cat, jobs]) => (
                         <optgroup key={cat} label={cat}>
@@ -1232,18 +1401,205 @@
                       min={120}
                       max={200}
                       value={profile.level}
+                      disabled={isSavingProfile}
                       onChange={(e) => setProfile({ ...profile, level: Number(e.target.value) })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none disabled:opacity-50"
                     />
                   </div>
 
-                  <button type="submit" className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 py-2.5 rounded-xl text-white font-bold">儲存設定</button>
+                  {/* 診斷提醒說明 */}
+                  {dbStatus !== 'connected' && (
+                    <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-[11px] text-rose-400 space-y-1">
+                      <p className="font-bold">⚠️ 目前資料庫未連線：</p>
+                      <p>1. 請確認右上角狀態燈是否為「🟢 連線成功」。</p>
+                      <p>2. 請至 Firebase Console 啟用 <b>Authentication - 匿名 (Anonymous) 登入</b>功能。</p>
+                      <p>3. 請確認您的網頁廣告阻擋插件（如 AdBlock）未封鎖 Firebase API。</p>
+                    </div>
+                  )}
+
+                  <button 
+                    type="submit" 
+                    disabled={isSavingProfile || dbStatus !== 'connected'}
+                    className={`w-full py-2.5 rounded-xl font-bold transition duration-200 ${
+                      dbStatus !== 'connected'
+                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white shadow-lg active:scale-95'
+                    }`}
+                  >
+                    {isSavingProfile ? "⏳ 儲存中，請稍候..." : dbStatus !== 'connected' ? "❌ 資料庫尚未連線" : "儲存設定"}
+                  </button>
                 </form>
               </div>
             </div>
           )}
 
-          {/* C. 確認視窗 */}
+          {/* ==========================================
+              C. 管理者登入視窗
+             ========================================== */}
+          {showAdminLoginModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative">
+                <button onClick={() => setShowAdminLoginModal(false)} className="absolute right-4 top-4 text-slate-400 hover:text-white text-xl">✕</button>
+                <h3 className="text-xl font-extrabold text-amber-400 mb-2">🔑 管理者後台登入</h3>
+                <p className="text-xs text-slate-400 mb-5">請輸入管理者帳號與密碼以啟用名單編輯功能。</p>
+
+                <form onSubmit={handleAdminLoginSubmit} className="space-y-4 text-sm">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">管理員帳號</label>
+                    <input
+                      type="text"
+                      required
+                      value={adminUsername}
+                      onChange={(e) => setAdminUsername(e.target.value)}
+                      placeholder="請輸入帳號"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">管理者密碼</label>
+                    <input
+                      type="password"
+                      required
+                      value={adminPassword}
+                      onChange={(e) => setAdminPassword(e.target.value)}
+                      placeholder="請輸入密碼"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* 貼心提示：告知使用者預設帳密 */}
+                  <div className="p-3 bg-amber-500/5 rounded-xl border border-amber-500/10 text-[10px] text-amber-300 leading-relaxed">
+                    <span className="font-bold">💡 貼心提醒：</span><br />
+                    本系統目前預設管理帳號為 <code className="bg-slate-950 px-1 py-0.5 rounded font-mono">***</code>，密碼為 <code className="bg-slate-950 px-1 py-0.5 rounded font-mono">***</code>。(可在本網頁原始碼內隨意修改之)。
+                  </div>
+
+                  <button type="submit" className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2.5 rounded-xl transition">核對密碼並登入</button>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ==========================================
+              D. 管理者控制台面板 (集中化、最安全)
+             ========================================== */}
+          {showAdminConsole && isAdminLoggedIn && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm overflow-y-auto">
+              <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 w-full max-w-2xl shadow-2xl relative my-8">
+                <button onClick={() => setShowAdminConsole(false)} className="absolute right-4 top-4 text-slate-400 hover:text-white text-xl">✕</button>
+                
+                <div className="border-b border-slate-800 pb-3 mb-4">
+                  <h3 className="text-xl font-extrabold text-amber-400 flex items-center space-x-2">
+                    <span>🔑 NyxShade 遠征隊管理者控制台</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">您好管理員，您可以在此管理全體註冊成員的名單或更動系統底層設定。</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  
+                  {/* 左側：成員角色卡名單與刪除管理 */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-sm text-slate-200 flex items-center space-x-1.5">
+                        <span>👥 成員角色卡管理</span>
+                        <span className="bg-slate-800 text-slate-400 text-[10px] px-2 py-0.5 rounded-full font-normal">
+                          {registeredUsers.length} 人已登錄
+                        </span>
+                      </h4>
+                    </div>
+
+                    {/* 搜尋欄 */}
+                    <input
+                      type="text"
+                      value={searchUserQuery}
+                      onChange={(e) => setSearchUserQuery(e.target.value)}
+                      placeholder="🔍 搜尋玩家 IGN 或職業..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none"
+                    />
+
+                    {/* 註冊清單列表 */}
+                    <div className="max-h-[300px] overflow-y-auto pr-2 space-y-2 scrollbar-thin scrollbar-thumb-slate-800">
+                      {(() => {
+                        const filtered = registeredUsers.filter(u => 
+                          (u.ign || '').toLowerCase().includes(searchUserQuery.toLowerCase()) ||
+                          (u.job || '').toLowerCase().includes(searchUserQuery.toLowerCase())
+                        );
+
+                        if (filtered.length === 0) {
+                          return (
+                            <div className="text-center text-slate-600 text-xs italic py-10">
+                              沒有找到符合搜尋條件的玩家角色卡
+                            </div>
+                          );
+                        }
+
+                        return filtered.map(u => (
+                          <div key={u.id} className="flex items-center justify-between bg-slate-950/80 p-2.5 rounded-xl border border-slate-850 text-xs">
+                            <div className="truncate pr-2">
+                              <p className="font-bold text-slate-200 truncate">{u.ign}</p>
+                              <p className="text-[10px] text-slate-500 mt-0.5">
+                                {u.job} • Lv.{u.level}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => handleDeleteUserProfile(u.userId, u.ign)}
+                              className="bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900 text-rose-300 font-bold px-2.5 py-1.5 rounded-lg text-[10px] transition shrink-0"
+                            >
+                              🗑️ 刪除角色卡
+                            </button>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* 右側：資料庫維護與系統重置 */}
+                  <div className="space-y-4">
+                    <h4 className="font-bold text-sm text-slate-200">⚙️ 資料庫與連線維護</h4>
+                    
+                    <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-850 space-y-3">
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        <span className="font-bold text-amber-500">⚠ 注意事項：</span><br />
+                        如果您不小心更動或貼錯了 Firebase 的 Config 造成網頁連線死當，或之後遠征隊更換了全新的專案資料庫，您可以按下下方按鈕將其抹除。
+                      </p>
+                      
+                      <button
+                        onClick={handleResetConfig}
+                        className="w-full bg-rose-950 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold py-2 rounded-xl text-xs transition active:scale-95"
+                      >
+                        ⚠️ 移除並重置本網頁 Firebase 金鑰
+                      </button>
+                    </div>
+
+                    {/* 資料庫安全性規則指南（貼心提供） */}
+                    <div className="p-3 bg-slate-950/40 border border-slate-855 rounded-xl text-[10px] text-slate-500 leading-relaxed">
+                      <p className="font-bold text-slate-400">💡 遠征隊刪除規則小撇步：</p>
+                      <p className="mt-1">為了確保您在管理後台能一鍵剔除與刪除所有隊員，請確認您的 Firebase Firestore Database 安全性規則 (Rules) 為寬鬆測試模式，例如：</p>
+                      <pre className="bg-slate-950 p-2 rounded mt-1 text-slate-400 font-mono text-[9px] overflow-x-auto">
+{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}`}
+                      </pre>
+                    </div>
+
+                  </div>
+
+                </div>
+
+                <div className="flex justify-end space-x-2 border-t border-slate-800 pt-3 mt-4 text-xs">
+                  <button onClick={() => setShowAdminConsole(false)} className="bg-slate-800 hover:bg-slate-750 px-4 py-2 rounded-xl text-slate-300">關閉後台</button>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {/* E. 通用 React 自訂確認對話視窗 */}
           {confirmModal.isOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl">
@@ -1251,12 +1607,27 @@
                 <p className="text-sm font-semibold text-slate-100 mt-2">{confirmModal.title}</p>
                 <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">{confirmModal.message}</p>
                 <div className="flex space-x-3 mt-6">
-                  <button onClick={() => setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null })} className="flex-1 bg-slate-850 py-2 rounded-xl text-xs">取消</button>
-                  <button onClick={confirmModal.onConfirm} className="flex-1 bg-rose-600 py-2 rounded-xl text-xs text-white font-bold">確認執行</button>
+                  <button onClick={() => setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null })} className="flex-1 bg-slate-850 py-2 rounded-xl text-xs hover:bg-slate-800 transition">取消</button>
+                  <button onClick={confirmModal.onConfirm} className="flex-1 bg-rose-600 py-2 rounded-xl text-xs text-white font-bold hover:bg-rose-700 transition active:scale-95">確認執行</button>
                 </div>
               </div>
             </div>
           )}
+
+          {/* 全域通知 (Toast) */}
+          {toast && (
+            <div className="fixed bottom-4 right-4 z-50 animate-bounce">
+              <div className={`px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 border ${
+                toast.type === 'error' 
+                  ? 'bg-rose-950/90 border-rose-800 text-rose-200' 
+                  : 'bg-emerald-950/90 border-emerald-800 text-emerald-200'
+              }`}>
+                <span>{toast.type === 'error' ? '❌' : '✅'}</span>
+                <span className="text-sm font-medium">{toast.message}</span>
+              </div>
+            </div>
+          )}
+
         </div>
       );
     }
