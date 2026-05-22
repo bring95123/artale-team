@@ -39,11 +39,11 @@
     // 遊戲常數設定 (預設 Boss 列表)
     // ==========================================
     const DEFAULT_BOSS_LIST = [
-      { id: 'zakum_normal', name: '普通炎魔 (Normal Zakum)', icon: '🔥', color: 'from-amber-600 to-red-700', maxPlayers: 18, desc: '最經典 of 8 手炎魔，需要良好調度。' },
+      { id: 'zakum_normal', name: '普通炎魔 (Normal Zakum)', icon: '🔥', color: 'from-amber-600 to-red-700', maxPlayers: 6, desc: '最經典 of 8 手炎魔，需要良好調度。' },
       { id: 'papu_normal', name: '普通拉圖斯 (Normal Papulatus)', icon: '⏰', color: 'from-blue-500 to-indigo-600', maxPlayers: 6, desc: '需要注意計時器與地圖炸彈。' },
       { id: 'papu_hard', name: '困難拉圖斯 (Hard Papulatus)', icon: '⏰', color: 'from-violet-600 to-fuchsia-850', maxPlayers: 6, desc: 'Artale 超高難度挑戰，極度考驗輸出與走位。' },
-      { id: 'horntail', name: '闇黑龍王 (Horntail)', icon: '🐉', color: 'from-emerald-600 to-teal-800', maxPlayers: 18, desc: '三顆龙头與多部位挑戰，誘惑控制是關鍵。' },
-      { id: 'pink_bean', name: '蝴蝶(艾畢) (Pink Bean)', icon: '🦋', color: 'from-pink-400 to-rose-600', maxPlayers: 30, desc: '目前終極 Boss，雕像攻略與反射考驗。' }
+      { id: 'horntail', name: '闇黑龍王 (Horntail)', icon: '🐉', color: 'from-emerald-600 to-teal-800', maxPlayers: 12, desc: '三顆龙头與多部位挑戰，誘惑控制是關鍵。' },
+      { id: 'pink_bean', name: '蝴蝶(艾畢) (Pink Bean)', icon: '🦋', color: 'from-pink-400 to-rose-600', maxPlayers: 12, desc: '目前終極 Boss，雕像攻略與反射考驗。' }
     ];
 
     // 💡 內建的 Emoji 候選選單庫
@@ -187,7 +187,7 @@
         return '未知';
       };
 
-      // 💡 楓之谷經典五大職業高精度護眼 SVG 渲染器 (💡 完美修復 w-4.5/h-4.5 导致的巨大溢出)
+      // 💡 楓之谷經典五大職業高精度護眼 SVG 渲染器
       const renderJobIcon = (jobName, sizeClass = "w-5 h-5") => {
         const category = getJobCategory(jobName);
         switch (category) {
@@ -247,6 +247,23 @@
               </svg>
             );
         }
+      };
+
+      const showToast = (message, type = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 5000); 
+      };
+
+      const triggerConfirm = (title, message, onConfirmCallback) => {
+        setConfirmModal({
+          isOpen: true,
+          title,
+          message,
+          onConfirm: () => {
+            onConfirmCallback();
+            setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
+          }
+        });
       };
 
       // 儲存手動輸入的 Firebase 金鑰
@@ -545,7 +562,7 @@
         }
       };
 
-      // 💡 匯入/還原舊的身分識別金鑰（實現換電腦不丟帳號）
+      // 💡 匯入/還原舊的身分識別金鑰（實現換電腦不丟帳號 - 💡 修正還原無反應，加上安全重新整理）
       const handleRecoverAccount = (e) => {
         e.preventDefault();
         const key = recoveryKeyInput.trim();
@@ -555,12 +572,14 @@
         }
         triggerConfirm(
           "確定要還原此身分嗎？",
-          "還原身分後，網頁將會切換到對應帳號的所有角色卡與出團進度，當前這台裝置的暫存角色將會被覆蓋。",
+          "還原身分後，網頁將會自動重新整理，並切換到對應帳號的所有角色卡與出團進度。",
           () => {
             localStorage.setItem('nyxshade_custom_uid', key);
-            setCustomUid(key);
             setRecoveryKeyInput('');
-            showToast("🎉 帳號還原成功！正在載入角色數據...");
+            showToast("🎉 帳號還原成功！正在重新整理載入數據...");
+            setTimeout(() => {
+              window.location.reload();
+            }, 1000);
           }
         );
       };
@@ -1424,7 +1443,7 @@
                             return (
                               <div 
                                 key={idx} 
-                                className={`p-5 rounded-2xl border transition-all duration-350 flex flex-col gap-4 ${isFinalized ? 'border-amber-400 bg-amber-500/10 shadow-lg shadow-amber-500/5 ring-1 ring-amber-400/40' : 'bg-slate-950/40 border-slate-800'}`}
+                                className={`p-5 rounded-2xl border transition-all duration-350 flex flex-col gap-4 ${isFinalized ? 'border-amber-400 bg-amber-500/20 shadow-xl shadow-amber-500/10 ring-2 ring-amber-400/50' : 'bg-slate-950/40 border-slate-800'}`}
                               >
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                   <div className="flex-1">
@@ -2240,7 +2259,7 @@
                 </div>
 
                 <div className="flex justify-end space-x-2 border-t border-slate-800 pt-3 mt-6 text-xs">
-                  <button onClick={() => setShowBossManagerModal(false)} className="bg-slate-800 hover:bg-slate-750 px-5 py-2.5 rounded-xl text-slate-300 font-bold transition font-semibold">關閉面板</button>
+                  <button onClick={() => setShowBossManagerModal(false)} className="bg-slate-800 hover:bg-slate-750 px-5 py-2.5 rounded-xl text-slate-300 font-bold transition">關閉面板</button>
                 </div>
 
               </div>
@@ -2251,8 +2270,8 @@
               💡 G. 遠征隊四轉職業管理工具 (Requirement 2 & 刪除功能 管理員專用)
              ========================================== */}
           {showJobManagerModal && isAdminLoggedIn && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm overflow-y-auto">
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 w-full max-w-2xl shadow-2xl relative my-8 font-semibold">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm overflow-y-auto font-semibold">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 w-full max-w-2xl shadow-2xl relative my-8">
                 <button onClick={() => setShowJobManagerModal(false)} className="absolute right-4 top-4 text-slate-400 hover:text-white text-xl">✕</button>
                 
                 <h3 className="text-2xl font-black text-teal-400 mb-2 flex items-center space-x-2">
@@ -2342,7 +2361,7 @@
                 </div>
 
                 <div className="flex justify-end space-x-2 border-t border-slate-800 pt-3 mt-6 text-xs">
-                  <button onClick={() => setShowJobManagerModal(false)} className="bg-slate-800 hover:bg-slate-750 px-5 py-2.5 rounded-xl text-slate-300 font-bold transition font-semibold">關閉職業管理</button>
+                  <button onClick={() => setShowJobManagerModal(false)} className="bg-slate-800 hover:bg-slate-750 px-5 py-2.5 rounded-xl text-slate-300 font-bold transition font-semibold font-bold">關閉職業管理</button>
                 </div>
 
               </div>
@@ -2357,7 +2376,7 @@
                 <h3 className="text-xl font-extrabold text-amber-400 mb-2">🔑 管理者後台登入</h3>
                 <p className="text-xs text-slate-400 mb-5">請輸入管理者帳號與密碼以啟用名單編輯功能。</p>
 
-                <form onSubmit={handleAdminLoginSubmit} className="space-y-4 text-sm font-semibold">
+                <form onSubmit={handleAdminLoginSubmit} className="space-y-4 text-sm font-semibold font-bold">
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">管理員帳號</label>
                     <input
@@ -2382,7 +2401,7 @@
                     />
                   </div>
 
-                  <div className="p-3 bg-amber-500/5 rounded-xl border border-amber-500/10 text-[10px] text-amber-300 leading-relaxed">
+                  <div className="p-3 bg-amber-500/5 rounded-xl border border-amber-500/10 text-[10px] text-amber-300 leading-relaxed font-bold">
                     <span className="font-bold">💡 貼心提醒：</span><br />
                     本系統目前預設管理帳號為 <code className="bg-slate-950 px-1 py-0.5 rounded font-mono">admin</code>，密碼為 <code className="bg-slate-950 px-1 py-0.5 rounded font-mono">nyxshadeadmin</code>.
                   </div>
@@ -2426,7 +2445,7 @@
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none"
                     />
 
-                    <div className="max-h-[300px] overflow-y-auto pr-2 space-y-3 scrollbar-thin scrollbar-thumb-slate-800 font-semibold">
+                    <div className="max-h-[300px] overflow-y-auto pr-2 space-y-3 scrollbar-thin scrollbar-thumb-slate-800 font-semibold font-bold">
                       {(() => {
                         const filtered = registeredUsers.filter(u => {
                           const chars = u.characters || [{ ign: u.ign, job: u.job, level: u.level }];
@@ -2453,7 +2472,7 @@
                                 <span className="font-bold text-slate-200 text-sm">👤 用戶身分 ({chars.length} 個角色)</span>
                                 <button
                                   onClick={() => handleDeleteUserProfile(u.userId || u.id, activeChar.ign)}
-                                  className="bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900 text-rose-300 font-bold px-2.5 py-1.5 rounded-lg text-xs transition"
+                                  className="bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900 text-rose-300 font-bold px-2.5 py-1.5 rounded-lg text-xs transition animate-pulse"
                                 >
                                   🗑️ 刪除全部角色卡
                                 </button>
@@ -2479,7 +2498,7 @@
                   <div className="space-y-4">
                     <h4 className="font-bold text-sm text-slate-200">⚙️ 資料庫與連線維護</h4>
                     
-                    <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-855 space-y-3 font-semibold">
+                    <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-855 space-y-3 font-semibold font-bold">
                       <p className="text-xs text-slate-400 leading-relaxed">
                         <span className="font-bold text-amber-500">⚠ 注意事項：</span><br />
                         如果您不小心更動或貼錯了 Firebase 的 Config 造成網頁連線死當，或之後遠征隊更換了全新的專案資料庫，您可以按下下方按鈕將其抹除。
@@ -2487,13 +2506,13 @@
                       
                       <button
                         onClick={handleResetConfig}
-                        className="w-full bg-rose-950 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold py-2 rounded-xl text-xs transition active:scale-95"
+                        className="w-full bg-rose-950 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold py-2 rounded-xl text-xs transition active:scale-95 animate-pulse"
                       >
                         ⚠️ 移除並重置本網頁 Firebase 金鑰
                       </button>
                     </div>
 
-                    <div className="p-3 bg-slate-950/40 border border-slate-850 rounded-xl text-[10px] text-slate-500 leading-relaxed">
+                    <div className="p-3 bg-slate-950/40 border border-slate-850 rounded-xl text-[10px] text-slate-500 leading-relaxed font-bold">
                       <p className="font-bold text-slate-400">💡 遠征隊安全管理提示：</p>
                       <p className="mt-1">請確認您的 Firebase Firestore Database 安全性規則 (Rules) 為寬鬆測試模式，例如：</p>
                       <pre className="bg-slate-950 p-2 rounded mt-1 text-slate-400 font-mono text-[9px] overflow-x-auto">
@@ -2511,7 +2530,7 @@ service cloud.firestore {
 
                 </div>
 
-                <div className="flex justify-end space-x-2 border-t border-slate-800 pt-3 mt-4 text-xs">
+                <div className="flex justify-end space-x-2 border-t border-slate-800 pt-3 mt-4 text-xs font-bold">
                   <button onClick={() => setShowAdminConsole(false)} className="bg-slate-800 hover:bg-slate-750 px-4 py-2 rounded-xl text-slate-300">關閉後台</button>
                 </div>
 
@@ -2522,7 +2541,7 @@ service cloud.firestore {
           {/* E. 通用 React 自訂確認對話視窗 */}
           {confirmModal.isOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl font-semibold">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl font-semibold font-bold">
                 <h3 className="text-lg font-bold text-rose-400">⚠️ 系統確認</h3>
                 <p className="text-sm font-semibold text-slate-100 mt-2">{confirmModal.title}</p>
                 <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">{confirmModal.message}</p>
