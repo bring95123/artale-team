@@ -308,7 +308,7 @@
       const handleAdminLoginSubmit = (e) => {
         e.preventDefault();
         const DEFAULT_ADMIN_USER = "admin";
-        const DEFAULT_ADMIN_PASS = "nyxshadeadmin";
+        const DEFAULT_ADMIN_PASS = "nyxshade";
 
         if (adminUsername.toLowerCase() === DEFAULT_ADMIN_USER && adminPassword === DEFAULT_ADMIN_PASS) {
           setIsAdminLoggedIn(true);
@@ -584,7 +584,7 @@
         );
       };
 
-      // 管理者專用：徹底刪除某隊員的角色資料卡
+      // 👑 管理者專用：徹底刪除某隊員的角色資料卡
       const handleDeleteUserProfile = (targetUserId, targetIgn) => {
         triggerConfirm(
           `確定要刪除該玩家的所有身分角色卡嗎？`,
@@ -841,7 +841,7 @@
         );
       };
 
-      // 投票時間 (基於當前啟用之身分角色進行)
+      // 🎯 投票時間 (基於當前啟用之身分角色進行) - 💡 新增「智慧反選（Toggle Off）」且綁定複合鍵（userId + ign + job）
       const handleVoteTime = async (raidId, timeIndex, choice) => {
         if (!activeCharacter.ign) {
           showToast("請先點擊右上角設定您的遊戲角色卡才能進行投票！", "error");
@@ -855,8 +855,8 @@
           const raidRef = db.doc(`artifacts/${appId}/public/data/raids/${raidId}`);
           let updatedVotes = [...(raid.votes || [])];
           
-          // 支援多身分分開投票
-          const userVoteIndex = updatedVotes.findIndex(v => v.userId === customUid && v.ign === activeCharacter.ign);
+          // 💡 複合鍵匹配：同時核對 userId、IGN 與職業 Job，達成多分身獨立投票
+          const userVoteIndex = updatedVotes.findIndex(v => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job);
 
           if (userVoteIndex > -1) {
             const userVote = { ...updatedVotes[userVoteIndex] };
@@ -864,9 +864,32 @@
             userVote.level = activeCharacter.level;
             // 💡投票時同時儲存其當前角色的「個人預設出團備註」
             userVote.memo = (activeCharacter.memo || '').trim();
-            userVote.votes = { ...userVote.votes, [timeIndex]: choice };
-            updatedVotes[userVoteIndex] = userVote;
+
+            // 💡 [反選智慧識別邏輯]: 如果當前點擊的選項跟之前投的完全相同，則視為取消
+            if (userVote.votes && userVote.votes[timeIndex] === choice) {
+              const nextVotes = { ...userVote.votes };
+              delete nextVotes[timeIndex]; // 移除此時段的投票紀錄
+              userVote.votes = nextVotes;
+
+              // 檢查該成員在所有時段是否已經沒有任何有效投票
+              const activeVotesCount = Object.values(nextVotes).filter(v => v === 'yes' || v === 'maybe' || v === 'no').length;
+              if (activeVotesCount === 0) {
+                // 若沒有任何投票紀錄，則將該使用者整筆投票資料從 votes 中移除，維護資料庫清潔度
+                updatedVotes = updatedVotes.filter((_, idx) => idx !== userVoteIndex);
+              } else {
+                updatedVotes[userVoteIndex] = userVote;
+              }
+              await raidRef.update({ votes: updatedVotes });
+              showToast("已取消該時段投票！");
+            } else {
+              // 一般新增或變更投票 (例如從 'maybe' 變為 'yes')
+              userVote.votes = { ...userVote.votes, [timeIndex]: choice };
+              updatedVotes[userVoteIndex] = userVote;
+              await raidRef.update({ votes: updatedVotes });
+              showToast("投票成功！");
+            }
           } else {
+            // 首次投票
             updatedVotes.push({
               userId: customUid,
               ign: activeCharacter.ign,
@@ -875,20 +898,21 @@
               memo: (activeCharacter.memo || '').trim(),
               votes: { [timeIndex]: choice }
             });
+            await raidRef.update({ votes: updatedVotes });
+            showToast("投票成功！");
           }
-          await raidRef.update({ votes: updatedVotes });
-          showToast("投票成功！");
         } catch (err) {
           showToast(`投票失敗: ${err.message}`, "error");
         }
       };
 
-      // 一鍵錄取投票人員 (一鍵排班 - 自動帶入角色儲存的專屬備註)
+      // 一鍵錄取投票人員 (一鍵排班 - 複合鍵綁定防重覆，自動帶入角色儲存的專屬備註)
       const handleQuickEnroll = async (raidId, voter) => {
         const raid = raids.find(r => r.id === raidId);
         if (!raid) return;
-        if (raid.participants?.some(p => p.userId === voter.userId && p.ign === voter.ign)) {
-          showToast(`${voter.ign} 已經在名單中囉！`, "error");
+        // 💡 複合鍵匹配核對：同時核對 ID、IGN、Job
+        if (raid.participants?.some(p => p.userId === voter.userId && p.ign === voter.ign && p.job === voter.job)) {
+          showToast(`${voter.ign} (${voter.job}) 已經在名單中囉！`, "error");
           return;
         }
         try {
@@ -903,19 +927,19 @@
             party: 'reserve'
           });
           await raidRef.update({ participants: updatedParticipants });
-          showToast(`已成功錄取 【${voter.ign}】！`);
+          showToast(`已成功錄取 【${voter.ign} (${voter.job})】！`);
         } catch (err) {
           showToast("錄取失敗", "error");
         }
       };
 
-      // 分組 (綁定 customUid + ign 雙重鍵)
-      const handleAssignParty = async (raidId, targetUserId, targetIgn, targetParty) => {
+      // 分組 (綁定 customUid + ign + job 複合鍵)
+      const handleAssignParty = async (raidId, targetUserId, targetIgn, targetJob, targetParty) => {
         const raid = raids.find(r => r.id === raidId);
         if (!raid) return;
         try {
           const updatedParticipants = raid.participants.map(p => {
-            if (p.userId === targetUserId && p.ign === targetIgn) return { ...p, party: targetParty };
+            if (p.userId === targetUserId && p.ign === targetIgn && p.job === targetJob) return { ...p, party: targetParty };
             return p;
           });
           await db.doc(`artifacts/${appId}/public/data/raids/${raidId}`).update({ participants: updatedParticipants });
@@ -925,16 +949,16 @@
         }
       };
 
-      // 踢人 (綁定 customUid + ign 雙重鍵)
-      const handleKickParticipant = (raidId, targetUserId, targetIgn) => {
+      // 踢人 (綁定 customUid + ign + job 複合鍵)
+      const handleKickParticipant = (raidId, targetUserId, targetIgn, targetJob) => {
         triggerConfirm(
           "確定要移出此玩家嗎？",
-          `將把 【${targetIgn}】 從出團與分組名單中移除。`,
+          `將把 【${targetIgn}】 (${targetJob}) 從出團與分組名單中移除。`,
           async () => {
             const targetRaid = raids.find(r => r.id === raidId);
             if (!targetRaid) return;
             try {
-              const updatedParticipants = targetRaid.participants.filter(p => !(p.userId === targetUserId && p.ign === targetIgn));
+              const updatedParticipants = targetRaid.participants.filter(p => !(p.userId === targetUserId && p.ign === targetIgn && p.job === targetJob));
               await db.doc(`artifacts/${appId}/public/data/raids/${raidId}`).update({ participants: updatedParticipants });
               showToast("已成功移出玩家。");
             } catch (err) {
@@ -1013,13 +1037,13 @@
       const activeRaid = raids.find(r => r.id === currentRaidId);
       const boss = activeRaid ? bosses.find(b => b.id === activeRaid.bossId) : null;
 
-      // 💡 運算邏輯：計算我「當前啟用角色」參與的出團日程列表
+      // 💡 運算邏輯：計算我「當前啟用角色與職業」參與的出團日程列表 (已精確綁定複合鍵)
       const myScheduleRaids = raids.filter(raid => {
         if (!activeCharacter.ign) return false;
-        // 1. 我在這個團投過 '可以' 或是 '也許'
-        const hasVotedActive = raid.votes?.some(v => v.userId === customUid && v.ign === activeCharacter.ign && Object.values(v.votes || {}).some(choice => choice === 'yes' || choice === 'maybe'));
-        // 2. 我已經在出團名單中
-        const isEnrolledActive = raid.participants?.some(p => p.userId === customUid && p.ign === activeCharacter.ign);
+        // 1. 我當前的分身在這個團投過 '可以' 或是 '也許'
+        const hasVotedActive = raid.votes?.some(v => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job && Object.values(v.votes || {}).some(choice => choice === 'yes' || choice === 'maybe'));
+        // 2. 我當前的分身已經在出團名單中
+        const isEnrolledActive = raid.participants?.some(p => p.userId === customUid && p.ign === activeCharacter.ign && p.job === activeCharacter.job);
         return hasVotedActive || isEnrolledActive;
       });
 
@@ -1034,7 +1058,7 @@
           <div>
             {/* 頂部導航列 - 100% 乾淨防呆，提供實時連線狀態 */}
             <header className="sticky top-0 z-30 bg-slate-900/80 backdrop-blur border-b border-slate-800 px-4 py-3.5 shadow-lg">
-              <div className="max-w-6xl mx-auto flex items-center justify-between font-semibold font-bold">
+              <div className="max-w-6xl mx-auto flex items-center justify-between font-semibold">
                 <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentRaidId(null)}>
                   <div className="text-4xl">🍁</div>
                   <div>
@@ -1046,7 +1070,7 @@
                       className="text-xs text-slate-500 select-none cursor-pointer active:text-amber-400 hover:text-slate-400 transition"
                       title="快速點擊5次可管理金鑰"
                     >
-                      MSW 懷舊楓之谷出團小助手
+                      不負責宣言：Hi，我是純粹壞掉別找我歐٩(ˊᗜˋ*)و✧｡
                     </p>
                   </div>
                 </div>
@@ -1174,7 +1198,7 @@
                   {activeCharacter.ign && (
                     <div className="mb-8 p-6 bg-slate-900/80 border border-slate-800 rounded-3xl shadow-xl">
                       <h3 className="text-lg font-black text-amber-400 mb-3.5 flex items-center space-x-2">
-                        <span>📅 我的出團日程 (當前切換：【{activeCharacter.ign}】)</span>
+                        <span>📅 我的出團日程 (當前切換：【{activeCharacter.ign} ({activeCharacter.job})】)</span>
                       </h3>
                       {myScheduleRaids.length === 0 ? (
                         <p className="text-sm text-slate-500 italic">當前角色尚未投票或報名任何進行中的遠征隊。快去下方投票吧！</p>
@@ -1183,7 +1207,7 @@
                           {myScheduleRaids.map((raid) => {
                             const raidBoss = bosses.find(b => b.id === raid.bossId);
                             // 檢查是否被分派到小隊了
-                            const participantInfo = raid.participants?.find(p => p.userId === customUid && p.ign === activeCharacter.ign);
+                            const participantInfo = raid.participants?.find(p => p.userId === customUid && p.ign === activeCharacter.ign && p.job === activeCharacter.job);
                             let enrollmentStatus = "已投票（待排班錄取）";
                             if (participantInfo) {
                               if (participantInfo.party === 'reserve') enrollmentStatus = "⏳ 錄取為：候補成員";
@@ -1373,7 +1397,7 @@
                           <div>
                             <h3 className="text-lg md:text-xl font-extrabold text-white">📅 候選出團時間投票</h3>
                             <p className="text-xs md:text-sm text-slate-400 mt-1">
-                              請選擇可以配合的時間。<span className="text-amber-400 font-bold">（以右上角選取角色投票，自動綁定角色備註：{activeCharacter.memo || "無"}）</span>
+                              請選擇可以配合的時間。<span className="text-amber-400 font-bold">（以右上角選取角色投票，再次點擊已選選項可「智慧反選」取消，自動綁定角色備註：{activeCharacter.memo || "無"}）</span>
                             </p>
                           </div>
                         </div>
@@ -1384,7 +1408,8 @@
                             const maybeVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'maybe') || [];
                             const noVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'no') || [];
 
-                            const myVoteRecord = activeRaid.votes?.find(v => v.userId === customUid && v.ign === activeCharacter.ign);
+                            // 💡 投票比對時加入 Job 核對，實現同帳號/同名不同職業的獨立狀態展現
+                            const myVoteRecord = activeRaid.votes?.find(v => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job);
                             const myChoice = myVoteRecord?.votes?.[idx] || null;
 
                             const isFinalized = activeRaid.finalTimeIndex === idx;
@@ -1395,10 +1420,11 @@
                               return (
                                 <div className="flex flex-wrap gap-2.5 mt-2">
                                   {votersList.map((voter, vIdx) => {
-                                    const alreadyInRaid = activeRaid.participants?.some(p => p.userId === voter.userId && p.ign === voter.ign);
+                                    // 💡 複合鍵匹配核對：同時核對 userId, ign, job
+                                    const alreadyInRaid = activeRaid.participants?.some(p => p.userId === voter.userId && p.ign === voter.ign && p.job === voter.job);
                                     return (
                                       <div 
-                                        key={voter.userId + '-' + voter.ign + '-' + vIdx}
+                                        key={voter.userId + '-' + voter.ign + '-' + voter.job + '-' + vIdx}
                                         className="inline-flex items-center space-x-2 bg-slate-950 border border-slate-805 px-3 py-1.5 rounded-xl text-sm transition hover:border-slate-750 max-w-full truncate"
                                       >
                                         <span className="text-base shrink-0">{emoji}</span>
@@ -1587,7 +1613,7 @@
 
                                 return (
                                   <div 
-                                    key={p.userId + '-' + p.ign} 
+                                    key={p.userId + '-' + p.ign + '-' + p.job} 
                                     className="bg-slate-950/50 hover:bg-slate-950 p-5 rounded-2xl border border-slate-800 flex flex-col gap-3.5 transition shadow-sm hover:border-slate-750"
                                   >
                                     {/* 頂行：序號、IGN(大字體)、職業 Badge */}
@@ -1623,7 +1649,7 @@
                                           <div className="flex flex-wrap gap-1.5">
                                             {groupKey !== '1' && (
                                               <button 
-                                                onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, '1')} 
+                                                onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, p.job, '1')} 
                                                 className="bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs px-2.5 py-1.5 rounded-xl border border-slate-800 transition font-bold"
                                               >
                                                 一隊
@@ -1631,7 +1657,7 @@
                                             )}
                                             {groupKey !== '2' && boss?.maxPlayers > 6 && (
                                               <button 
-                                                onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, '2')} 
+                                                onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, p.job, '2')} 
                                                 className="bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs px-2.5 py-1.5 rounded-xl border border-slate-800 transition font-bold"
                                               >
                                                 二隊
@@ -1639,7 +1665,7 @@
                                             )}
                                             {groupKey !== '3' && boss?.maxPlayers > 12 && (
                                               <button 
-                                                onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, '3')} 
+                                                onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, p.job, '3')} 
                                                 className="bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs px-2.5 py-1.5 rounded-xl border border-slate-800 transition font-bold"
                                               >
                                                 三隊
@@ -1647,7 +1673,7 @@
                                             )}
                                             {groupKey !== 'reserve' && (
                                               <button 
-                                                onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, 'reserve')} 
+                                                onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, p.job, 'reserve')} 
                                                 className="bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs px-2.5 py-1.5 rounded-xl border border-slate-800 transition font-bold"
                                               >
                                                 候補
@@ -1655,7 +1681,7 @@
                                             )}
                                           </div>
                                           <button 
-                                            onClick={() => handleKickParticipant(activeRaid.id, p.userId, p.ign)} 
+                                            onClick={() => handleKickParticipant(activeRaid.id, p.userId, p.ign, p.job)} 
                                             className="bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900/50 text-rose-300 text-xs px-2.5 py-1.5 rounded-xl transition font-bold shrink-0"
                                           >
                                             剔除
@@ -1696,7 +1722,7 @@
             <div className="mt-2 space-x-3">
               {isAdminLoggedIn ? (
                 <>
-                  <button onClick={() => setShowAdminConsole(true)} className="text-amber-500 hover:text-amber-400 hover:underline font-bold transition">🔑 開啟管理員控制台</button>
+                  <button onClick={() => setShowAdminConsole(true)} className="text-amber-500 hover:text-amber-400 hover:underline font-bold transition">🔑 開氣管理員控制台</button>
                   <span className="text-slate-800">•</span>
                   <button onClick={handleAdminLogout} className="text-rose-500 hover:text-rose-400 hover:underline transition">登出管理模式</button>
                 </>
@@ -1725,7 +1751,7 @@
                           key={b.id}
                           type="button"
                           onClick={() => setNewRaid({ ...newRaid, bossId: b.id })}
-                          className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition ${newRaid.bossId === b.id ? 'bg-slate-800 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-850 text-slate-300'}`}
+                          className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition ${newRaid.bossId === b.id ? 'bg-slate-800 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-855 text-slate-300'}`}
                         >
                           <span className="text-2xl">{b.icon || '👹'}</span>
                           <div className="min-w-0 flex-1">
@@ -1804,7 +1830,7 @@
                   </div>
 
                   <div className="flex space-x-3 pt-3">
-                    <button type="button" onClick={() => setIsCreating(false)} className="flex-1 bg-slate-850 py-2.5 rounded-xl text-slate-300">取消</button>
+                    <button type="button" onClick={() => setIsCreating(false)} className="flex-1 bg-slate-855 py-2.5 rounded-xl text-slate-300">取消</button>
                     <button type="submit" className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 py-2.5 rounded-xl text-white font-bold">確認建立</button>
                   </div>
                 </form>
@@ -1831,7 +1857,7 @@
                           key={b.id}
                           type="button"
                           onClick={() => setEditRaidData({ ...editRaidData, bossId: b.id })}
-                          className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition ${editRaidData.bossId === b.id ? 'bg-slate-800 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-850 text-slate-300'}`}
+                          className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition ${editRaidData.bossId === b.id ? 'bg-slate-800 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-855 text-slate-300'}`}
                         >
                           <span className="text-2xl">{b.icon || '👹'}</span>
                           <div className="min-w-0 flex-1">
@@ -1910,7 +1936,7 @@
                   </div>
 
                   <div className="flex space-x-3 pt-3">
-                    <button type="button" onClick={() => setIsEditingRaid(false)} className="flex-1 bg-slate-850 py-2.5 rounded-xl text-slate-300">取消</button>
+                    <button type="button" onClick={() => setIsEditingRaid(false)} className="flex-1 bg-slate-855 py-2.5 rounded-xl text-slate-300">取消</button>
                     <button type="submit" className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 py-2.5 rounded-xl text-white font-bold">確認儲存</button>
                   </div>
                 </form>
@@ -2057,7 +2083,7 @@
                             <input
                               type="number"
                               required
-                              min={120}
+                              min={30}
                               max={200}
                               value={char.level}
                               onChange={(e) => {
@@ -2104,7 +2130,7 @@
                     <button 
                       type="button" 
                       onClick={() => setShowProfileModal(false)} 
-                      className="flex-1 bg-slate-850 hover:bg-slate-750 py-3 rounded-xl text-sm font-bold text-slate-300"
+                      className="flex-1 bg-slate-855 hover:bg-slate-750 py-3 rounded-xl text-sm font-bold text-slate-300"
                     >
                       取消
                     </button>
@@ -2304,7 +2330,7 @@
                       <input
                         type="text"
                         required
-                        placeholder="例如: 破風使者, 魂騎士"
+                        placeholder="例如: 破風使者"
                         value={newJobData.name}
                         onChange={(e) => setNewJobData({ ...newJobData, name: e.target.value })}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 focus:outline-none text-slate-100"
@@ -2327,7 +2353,7 @@
                     
                     <div className="max-h-[380px] overflow-y-auto pr-2 space-y-4 scrollbar-thin scrollbar-thumb-slate-800 text-xs">
                       {Object.entries(jobCategories).map(([cat, jobs]) => (
-                        <div key={cat} className="space-y-1.5 p-3.5 bg-slate-950 rounded-xl border border-slate-850">
+                        <div key={cat} className="space-y-1.5 p-3.5 bg-slate-950 rounded-xl border border-slate-855">
                           <div className="flex items-center space-x-2 border-b border-slate-800/60 pb-1 mb-2">
                             {renderJobIcon(jobs[0] || cat, "w-4 h-4")}
                             <span className="font-extrabold text-indigo-300 text-sm">{cat}</span>
@@ -2361,7 +2387,7 @@
                 </div>
 
                 <div className="flex justify-end space-x-2 border-t border-slate-800 pt-3 mt-6 text-xs">
-                  <button onClick={() => setShowJobManagerModal(false)} className="bg-slate-800 hover:bg-slate-750 px-5 py-2.5 rounded-xl text-slate-300 font-bold transition font-semibold font-bold">關閉職業管理</button>
+                  <button onClick={() => setShowJobManagerModal(false)} className="bg-slate-800 hover:bg-slate-750 px-5 py-2.5 rounded-xl text-slate-300 font-bold transition">關閉職業管理</button>
                 </div>
 
               </div>
@@ -2376,7 +2402,7 @@
                 <h3 className="text-xl font-extrabold text-amber-400 mb-2">🔑 管理者後台登入</h3>
                 <p className="text-xs text-slate-400 mb-5">請輸入管理者帳號與密碼以啟用名單編輯功能。</p>
 
-                <form onSubmit={handleAdminLoginSubmit} className="space-y-4 text-sm font-semibold font-bold">
+                <form onSubmit={handleAdminLoginSubmit} className="space-y-4 text-sm font-semibold">
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">管理員帳號</label>
                     <input
@@ -2403,7 +2429,7 @@
 
                   <div className="p-3 bg-amber-500/5 rounded-xl border border-amber-500/10 text-[10px] text-amber-300 leading-relaxed font-bold">
                     <span className="font-bold">💡 貼心提醒：</span><br />
-                    本系統目前預設管理帳號為 <code className="bg-slate-950 px-1 py-0.5 rounded font-mono">admin</code>，密碼為 <code className="bg-slate-950 px-1 py-0.5 rounded font-mono">nyxshadeadmin</code>.
+                    本系統目前預設管理帳號為 <code className="bg-slate-950 px-1 py-0.5 rounded font-mono">admin</code>，密碼為 <code className="bg-slate-950 px-1 py-0.5 rounded font-mono">***</code>.
                   </div>
 
                   <button type="submit" className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2.5 rounded-xl transition">核對密碼並登入</button>
@@ -2445,7 +2471,7 @@
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none"
                     />
 
-                    <div className="max-h-[300px] overflow-y-auto pr-2 space-y-3 scrollbar-thin scrollbar-thumb-slate-800 font-semibold font-bold">
+                    <div className="max-h-[300px] overflow-y-auto pr-2 space-y-3 scrollbar-thin scrollbar-thumb-slate-800 font-semibold">
                       {(() => {
                         const filtered = registeredUsers.filter(u => {
                           const chars = u.characters || [{ ign: u.ign, job: u.job, level: u.level }];
@@ -2498,7 +2524,7 @@
                   <div className="space-y-4">
                     <h4 className="font-bold text-sm text-slate-200">⚙️ 資料庫與連線維護</h4>
                     
-                    <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-855 space-y-3 font-semibold font-bold">
+                    <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-855 space-y-3 font-semibold">
                       <p className="text-xs text-slate-400 leading-relaxed">
                         <span className="font-bold text-amber-500">⚠ 注意事項：</span><br />
                         如果您不小心更動或貼錯了 Firebase 的 Config 造成網頁連線死當，或之後遠征隊更換了全新的專案資料庫，您可以按下下方按鈕將其抹除。
@@ -2512,7 +2538,7 @@
                       </button>
                     </div>
 
-                    <div className="p-3 bg-slate-950/40 border border-slate-850 rounded-xl text-[10px] text-slate-500 leading-relaxed font-bold">
+                    <div className="p-3 bg-slate-950/40 border border-slate-855 rounded-xl text-[10px] text-slate-500 leading-relaxed font-bold">
                       <p className="font-bold text-slate-400">💡 遠征隊安全管理提示：</p>
                       <p className="mt-1">請確認您的 Firebase Firestore Database 安全性規則 (Rules) 為寬鬆測試模式，例如：</p>
                       <pre className="bg-slate-950 p-2 rounded mt-1 text-slate-400 font-mono text-[9px] overflow-x-auto">
@@ -2541,12 +2567,12 @@ service cloud.firestore {
           {/* E. 通用 React 自訂確認對話視窗 */}
           {confirmModal.isOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl font-semibold font-bold">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl font-semibold">
                 <h3 className="text-lg font-bold text-rose-400">⚠️ 系統確認</h3>
                 <p className="text-sm font-semibold text-slate-100 mt-2">{confirmModal.title}</p>
                 <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">{confirmModal.message}</p>
                 <div className="flex space-x-3 mt-6">
-                  <button onClick={() => setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null })} className="flex-1 bg-slate-850 py-2 rounded-xl text-xs hover:bg-slate-800 transition">取消</button>
+                  <button onClick={() => setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null })} className="flex-1 bg-slate-855 py-2 rounded-xl text-xs hover:bg-slate-800 transition">取消</button>
                   <button onClick={confirmModal.onConfirm} className="flex-1 bg-rose-600 py-2 rounded-xl text-xs text-white font-bold hover:bg-rose-700 transition active:scale-95">確認執行</button>
                 </div>
               </div>
