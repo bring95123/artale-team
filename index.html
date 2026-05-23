@@ -20,7 +20,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef } = React;
 
     // =========================================================================
     // 📢 【管理員設定區】全域預設 Firebase 金鑰設定（已為您預先載入金鑰 🔑）
@@ -88,11 +88,6 @@
       }
     };
 
-    // 💡 智慧 3 聯動轉職階段資料庫 (100% 依據官方圖表對照)
-    const ARTALE_JOBS_DB = DEFAULT_JOB_CATEGORIES;
-
-    const BOSS_EMOJIS = BOSS_EMOJIS_LIST;
-
     // 時間格式化輔助函數
     const formatDateTime = (dateTimeStr) => {
       if (!dateTimeStr) return '';
@@ -128,7 +123,7 @@
       }
     }
 
-   function App() {
+    function App() {
       // ------------------------------------------
       // Firebase 初始化與連線狀態
       // ------------------------------------------
@@ -155,7 +150,6 @@
       // 💡 職業管理核心 state (動態綁定資料庫)
       const [jobCategories, setJobCategories] = useState(DEFAULT_JOB_CATEGORIES);
       const [showJobManagerModal, setShowJobManagerModal] = useState(false);
-      // 💡 管理端新增職業表單狀態：預設選擇 4轉
       const [newJobData, setNewJobData] = useState({ category: '劍士', tier: '4轉', name: '' });
 
       // 💡 支援多角色設定且內建「個人預設出團備註」
@@ -174,8 +168,15 @@
       const [currentRaidId, setCurrentRaidId] = useState(null);
       const [isCreating, setIsCreating] = useState(false);
       
-      // 💡 補回關鍵的「發起全新遠征隊」表單狀態
-      const [newRaid, setNewRaid] = useState({ title: '', bossId: 'zakum_normal', notes: '', proposedTimes: [''] });
+      // 💡 揪團建立表單狀態：新增 mode 屬性 (預設 'datetime'，或 'interest')
+      const [newRaid, setNewRaid] = useState({ 
+        title: '', 
+        bossId: 'zakum_normal', 
+        notes: '', 
+        proposedTimes: [''], 
+        mode: 'datetime',
+        partyCount: 1 // 💡 建立表單預設小隊組數 state
+      });
 
       // 💡 突襲 Boss 管理（管理員自訂突襲王）
       const [bosses, setBosses] = useState(DEFAULT_BOSS_LIST);
@@ -184,7 +185,31 @@
 
       // 管理員編輯現有遠征隊狀態
       const [isEditingRaid, setIsEditingRaid] = useState(false);
-      const [editRaidData, setEditRaidData] = useState({ title: '', bossId: 'zakum_normal', notes: '', proposedTimes: [''] });
+      const [editRaidData, setEditRaidData] = useState({ 
+        title: '', 
+        bossId: 'zakum_normal', 
+        notes: '', 
+        proposedTimes: [''],
+        mode: 'datetime',
+        partyCount: 1 // 💡 編輯表單預設小隊組數 state
+      });
+
+      // 實時討論與未讀取時間監聽狀態 (💡 升級 DC 風格記憶體 👑)
+      const [chatMessages, setChatMessages] = useState([]);
+      const [chatInput, setChatInput] = useState('');
+      const [isChatOpen, setIsChatOpen] = useState(false); // 控制浮動聊天室是否開啟的 state
+      const [isChatMaximized, setIsChatMaximized] = useState(false); // 💡 新增：控制聊天視窗是否放大至全螢幕的 state
+      const chatContainerRef = useRef(null); // 精準控管討論區內滾動
+
+      // 💡 DC 未讀時間段智慧追蹤
+      const [lastReadTimes, setLastReadTimes] = useState(() => {
+        try {
+          return JSON.parse(localStorage.getItem('raid_last_read_times') || '{}');
+        } catch (e) {
+          return {};
+        }
+      });
+      const [chatOpenedLastReadTime, setChatOpenedLastReadTime] = useState(0);
 
       // 隱藏重設點擊次數狀態 (點 5 次灰色小字重設)
       const [hiddenResetClicks, setHiddenResetClicks] = useState(0);
@@ -203,7 +228,7 @@
       const [toast, setToast] = useState(null);
       const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
       
-      // 💡 新增與優化：隊員詳細角色卡彈出視窗狀態
+      // 💡 隊員詳細角色卡彈出視窗狀態
       const [voterDetailModal, setVoterDetailModal] = useState({ isOpen: false, voter: null });
 
       // 💡 根據職業名稱動態判定所屬的大系
@@ -426,7 +451,6 @@
           setUser(currentUser);
           if (currentUser) {
             setDbStatus('connected');
-            // 如果 local 沒存過自訂 UID，使用 Auth UID 初始化做為第一代識別碼
             if (!localStorage.getItem('nyxshade_custom_uid')) {
               localStorage.setItem('nyxshade_custom_uid', currentUser.uid);
               setCustomUid(currentUser.uid);
@@ -445,7 +469,6 @@
           snapshot.forEach((doc) => {
             customList.push({ id: doc.id, ...doc.data() });
           });
-          // 將預設 Boss 與自訂 Boss 合併，自訂可覆蓋預設
           const merged = [...DEFAULT_BOSS_LIST];
           customList.forEach(cb => {
             const idx = merged.findIndex(b => b.id === cb.id);
@@ -461,14 +484,13 @@
         return () => unsubscribe();
       }, [db]);
 
-      // 💡 實時監聽自訂職業配置 (智慧升級檢測：升級舊有的 flat-array 資料庫至最新 3 轉與 4 轉巢狀配置 🍁)
+      // 💡 實時監聽自訂職業配置
       useEffect(() => {
         if (!db) return;
         const jobsRef = db.doc(`artifacts/${appId}/public/data/jobs/config`);
         const unsubscribe = jobsRef.onSnapshot((doc) => {
           if (doc.exists) {
             const dbJobs = doc.data();
-            // 💡 智慧分層結構檢測：檢測是否包含巢狀 3 轉 (如 3轉、4轉分屬不同 Key 巢狀形式)，若無則自動在資料庫內升級！
             const isNested = Object.values(dbJobs).every(val => val && typeof val === 'object' && !Array.isArray(val));
             if (!isNested) {
               jobsRef.set(DEFAULT_JOB_CATEGORIES)
@@ -478,7 +500,6 @@
               setJobCategories(dbJobs);
             }
           } else {
-            // 首次加載無文件時，將預設職業結構上傳初始化
             jobsRef.set(DEFAULT_JOB_CATEGORIES).catch(err => console.error("資料庫職業配置初始化失敗", err));
             setJobCategories(DEFAULT_JOB_CATEGORIES);
           }
@@ -489,7 +510,98 @@
         return () => unsubscribe();
       }, [db]);
 
-      // 💡 個人檔案載入與後台靜態同步（支援跨裝置自訂 UID 身分恢復與遷移）
+      // 💡 實時監聽「即時遠征討論串」
+      useEffect(() => {
+        if (!db || !currentRaidId) {
+          setChatMessages([]);
+          return;
+        }
+        const messagesCol = db.collection(`artifacts/${appId}/public/data/raid_messages_${currentRaidId}`);
+        
+        const unsubscribe = messagesCol.onSnapshot((snapshot) => {
+          const msgs = [];
+          snapshot.forEach((doc) => {
+            msgs.push({ id: doc.id, ...doc.data() });
+          });
+          // 依時間排序
+          msgs.sort((a, b) => {
+            const tA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : (a.timestamp || 0);
+            const tB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : (b.timestamp || 0);
+            return tA - tB;
+          });
+          setChatMessages(msgs);
+        }, (err) => {
+          console.error("即時討論讀取失敗", err);
+        });
+        return () => unsubscribe();
+      }, [db, currentRaidId]);
+
+      // 💡 監聽聊天室開關與更新已讀時間（DC 智慧未讀機制 👑）
+      useEffect(() => {
+        if (!currentRaidId) return;
+
+        if (isChatOpen) {
+          // 點開聊天室時，記錄當下開啟時的「歷史已讀時間點」，供渲染未讀紅線使用
+          const lastTime = lastReadTimes[currentRaidId] || Date.now();
+          setChatOpenedLastReadTime(lastTime);
+
+          // 立即將未讀設為當前最新時間，讓紅點與氣泡歸零
+          setLastReadTimes(prev => {
+            const next = { ...prev, [currentRaidId]: Date.now() };
+            localStorage.setItem('raid_last_read_times', JSON.stringify(next));
+            return next;
+          });
+        }
+      }, [isChatOpen, currentRaidId]);
+
+      // 💡 聊天視窗開著時，自動隨時已讀新訊息
+      useEffect(() => {
+        if (isChatOpen && currentRaidId && chatMessages.length > 0) {
+          const latestMsg = chatMessages[chatMessages.length - 1];
+          const latestTime = latestMsg.timestamp || (latestMsg.createdAt?.seconds ? latestMsg.createdAt.seconds * 1000 : Date.now());
+          
+          setLastReadTimes(prev => {
+            const currentSaved = prev[currentRaidId] || 0;
+            if (latestTime > currentSaved) {
+              const next = { ...prev, [currentRaidId]: latestTime + 1 };
+              localStorage.setItem('raid_last_read_times', JSON.stringify(next));
+              return next;
+            }
+            return prev;
+          });
+        }
+      }, [chatMessages.length, isChatOpen, currentRaidId]);
+
+      // 💡 計算未讀取的訊息行數 (精確對應有幾行未讀訊息 👑)
+      const getUnreadCount = (raidId) => {
+        if (!raidId) return 0;
+        if (currentRaidId === raidId && isChatOpen) return 0;
+
+        const lastRead = lastReadTimes[raidId] || 0;
+        return chatMessages.filter(msg => {
+          const msgTime = msg.timestamp || (msg.createdAt?.seconds ? msg.createdAt.seconds * 1000 : 0);
+          return msgTime > lastRead;
+        }).length;
+      };
+
+      // 💡 當進入或切換遠征隊時，預設自動打開懸浮聊天窗，並確保重置為初始狀態
+      useEffect(() => {
+        if (currentRaidId) {
+          setIsChatOpen(true);
+        } else {
+          setIsChatOpen(false);
+          setIsChatMaximized(false); // 切換出來時重設放大狀態
+        }
+      }, [currentRaidId]);
+
+      // 💡 僅滾動討論區內部容器，徹底解決網頁自動往下滑、影響主視窗視角的 Bug！
+      useEffect(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+      }, [chatMessages, isChatOpen]);
+
+      // 💡 個人檔案載入與後台靜態同步
       useEffect(() => {
         if (!db || !customUid) return;
 
@@ -507,7 +619,6 @@
                   characters: data.characters
                 };
               } else {
-                // 舊單身分格式轉移
                 loadedProfile = {
                   activeCharacterIndex: 0,
                   characters: [{
@@ -520,7 +631,6 @@
               }
               setProfile(loadedProfile);
 
-              // [背景同步] 成員名冊同步
               db.doc(`artifacts/${appId}/public/data/registered_users/${customUid}`).set({
                 userId: customUid,
                 ...loadedProfile,
@@ -596,11 +706,9 @@
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
           };
 
-          // 1. 寫入個人私有檔案 (Rule 1)
           const profileRef = db.doc(`artifacts/${appId}/users/${customUid}/profile/info`);
           await profileRef.set(profileData);
 
-          // 2. 寫入公用成員清單以供管理者後台管理 (Rule 1)
           const publicRef = db.doc(`artifacts/${appId}/public/data/registered_users/${customUid}`);
           await publicRef.set({
             userId: customUid,
@@ -692,8 +800,13 @@
           setShowProfileModal(true);
           return;
         }
-        const filteredTimes = newRaid.proposedTimes.filter(t => t.trim() !== '');
-        if (filteredTimes.length === 0) {
+
+        // 如果是指定日期時間模式，需驗證時間填寫
+        const filteredTimes = newRaid.mode === 'interest' 
+          ? [] 
+          : newRaid.proposedTimes.filter(t => t.trim() !== '');
+
+        if (newRaid.mode !== 'interest' && filteredTimes.length === 0) {
           showToast("請至少填寫一個候選時間！", "error");
           return;
         }
@@ -704,13 +817,15 @@
             bossId: newRaid.bossId,
             notes: newRaid.notes,
             proposedTimes: filteredTimes,
+            mode: newRaid.mode || 'datetime', // 儲存模式
+            partyCount: Number(newRaid.partyCount) || 1, // 💡 儲存建立時指定的小隊組數
             creatorId: customUid,
             creatorIgn: activeCharacter.ign,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             participants: [],
             votes: []
           });
-          setNewRaid({ title: '', bossId: 'zakum_normal', notes: '', proposedTimes: [''] });
+          setNewRaid({ title: '', bossId: 'zakum_normal', notes: '', proposedTimes: [''], mode: 'datetime', partyCount: 1 });
           setIsCreating(false);
           showToast("成功發起遠征隊揪團！");
         } catch (err) {
@@ -718,7 +833,36 @@
         }
       };
 
-      // 💡 管理員新增自訂 Boss（自動產生 ID）
+      // 💡 發送即時討論訊息（重構完美補回，解決 ReferenceError Crash 👑）
+      const handleSendMessage = async (e) => {
+        e.preventDefault();
+        if (!chatInput.trim()) return;
+        if (!activeCharacter.ign) {
+          showToast("請先設定您的遊戲角色卡才能參與討論！", "error");
+          setShowProfileModal(true);
+          return;
+        }
+        try {
+          const textToSend = chatInput.trim();
+          setChatInput(''); // 快速清空輸入欄提高體驗
+          
+          // 寫入遠征隊專屬的獨立子集合中
+          await db.collection(`artifacts/${appId}/public/data/raid_messages_${currentRaidId}`).add({
+            raidId: currentRaidId,
+            userId: customUid,
+            ign: activeCharacter.ign,
+            job: activeCharacter.job,
+            level: activeCharacter.level,
+            text: textToSend,
+            timestamp: Date.now(),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        } catch (err) {
+          showToast(`傳送失敗: ${err.message}`, "error");
+        }
+      };
+
+      // 💡 管理員新增自訂 Boss
       const handleCreateCustomBoss = async (e) => {
         e.preventDefault();
         if (!db || !newBossData.name.trim()) {
@@ -726,7 +870,7 @@
           return;
         }
         try {
-          const bossId = 'boss_' + Date.now(); // 自動化生成高辨識度 ID
+          const bossId = 'boss_' + Date.now();
           await db.doc(`artifacts/${appId}/public/data/bosses/${bossId}`).set({
             id: bossId,
             name: newBossData.name.trim(),
@@ -734,7 +878,7 @@
             color: newBossData.color,
             maxPlayers: Number(newBossData.maxPlayers) || 18,
             desc: newBossData.desc.trim(),
-            isCustom: true // 標記為自訂 Boss
+            isCustom: true
           });
           setNewBossData({ name: '', icon: '🔥', color: 'from-red-650 to-rose-950', maxPlayers: 18, desc: '' });
           showToast("🎉 自訂 Boss 新增成功！");
@@ -759,7 +903,7 @@
         );
       };
 
-      // 💡 管理員新增自訂職業身分（已同步更新為巢狀分層 2轉/3轉/4轉 結構 👑）
+      // 💡 管理員新增自訂職業身分
       const handleAddJob = async (e) => {
         e.preventDefault();
         const jobName = newJobData.name.trim();
@@ -767,7 +911,6 @@
           showToast("請輸入職業名稱！", "error");
           return;
         }
-        // 檢查防呆：是否有重複職業名稱 (深度遍歷 3轉/4轉 物件)
         let exists = false;
         for (const catTiers of Object.values(jobCategories)) {
           if (catTiers && typeof catTiers === 'object' && !Array.isArray(catTiers)) {
@@ -783,13 +926,11 @@
           return;
         }
 
-        // 深拷貝當前職業結構
         const updatedCategories = JSON.parse(JSON.stringify(jobCategories));
         if (!updatedCategories[newJobData.category]) {
           updatedCategories[newJobData.category] = { '2轉': [], '3轉': [], '4轉': [] };
         }
         
-        // 確保為巢狀結構
         if (typeof updatedCategories[newJobData.category] !== 'object' || Array.isArray(updatedCategories[newJobData.category])) {
           updatedCategories[newJobData.category] = { '2轉': [], '3轉': [], '4轉': [jobName] };
         } else {
@@ -809,7 +950,7 @@
         }
       };
 
-      // 💡 刪除特定職業身分 (支援巢狀轉職階段參數傳導 👑)
+      // 💡 刪除特定職業身分
       const handleDeleteJob = async (category, tier, jobName) => {
         triggerConfirm(
           `確定要刪除職業身分 【${jobName}】 嗎？`,
@@ -837,11 +978,14 @@
       const startEditingRaid = () => {
         const activeRaid = raids.find(r => r.id === currentRaidId);
         if (!activeRaid) return;
+        const currentRaidBoss = bosses.find(b => b.id === activeRaid.bossId);
         setEditRaidData({
           title: activeRaid.title || '',
           bossId: activeRaid.bossId || 'zakum_normal',
           notes: activeRaid.notes || '',
-          proposedTimes: [...(activeRaid.proposedTimes || [''])]
+          proposedTimes: [...(activeRaid.proposedTimes || [''])],
+          mode: activeRaid.mode || 'datetime',
+          partyCount: activeRaid.partyCount || (currentRaidBoss?.maxPlayers > 12 ? 3 : (currentRaidBoss?.maxPlayers > 6 ? 2 : 1)) // 💡 初始化時載入當前小隊組數
         });
         setIsEditingRaid(true);
       };
@@ -849,8 +993,12 @@
       const handleSaveRaidEdit = async (e) => {
         e.preventDefault();
         if (!db || !currentRaidId) return;
-        const filteredTimes = editRaidData.proposedTimes.filter(t => t.trim() !== '');
-        if (filteredTimes.length === 0) {
+
+        const filteredTimes = editRaidData.mode === 'interest'
+          ? []
+          : editRaidData.proposedTimes.filter(t => t.trim() !== '');
+
+        if (editRaidData.mode !== 'interest' && filteredTimes.length === 0) {
           showToast("請至少填寫一個候選時間！", "error");
           return;
         }
@@ -860,10 +1008,12 @@
             title: editRaidData.title,
             bossId: editRaidData.bossId,
             notes: editRaidData.notes,
-            proposedTimes: filteredTimes
+            proposedTimes: filteredTimes,
+            mode: editRaidData.mode || 'datetime',
+            partyCount: Number(editRaidData.partyCount) || 1 // 💡 更新時寫入調整後的小隊組數
           });
           setIsEditingRaid(false);
-          showToast("遠征隊資訊與時間修改成功！");
+          showToast("遠征隊資訊與模式修改成功！");
         } catch (err) {
           showToast(`修改失敗: ${err.message}`, "error");
         }
@@ -886,7 +1036,7 @@
       const handleDeleteRaid = (raidId) => {
         triggerConfirm(
           "確定要刪除此遠征隊嗎？",
-          "此操作不可逆，將清空所有報名與投票資訊。",
+          "此操作不可逆，將清空所有報名、聊天、與投票資訊。",
           async () => {
             try {
               await db.doc(`artifacts/${appId}/public/data/raids/${raidId}`).delete();
@@ -903,7 +1053,7 @@
       const handleResetRaid = (raidId) => {
         triggerConfirm(
           "確定要重置此團名單嗎？",
-          "這會清空所有的報名、小隊編組與投票，但保留本團的標題、時間與基本設定。",
+          "這會清空所有的報名、小隊編組與投票，但保留本團的標題、討論紀錄與基本設定。",
           async () => {
             try {
               await db.doc(`artifacts/${appId}/public/data/raids/${raidId}`).update({
@@ -918,7 +1068,7 @@
         );
       };
 
-      // 🎯 投票時間 (基於當前啟用之身分角色進行) - 💡 支援「智慧反選（Toggle Off）」且綁定複合鍵（userId + ign + job）
+      // 🎯 投票/意願表達 (智慧反選 Toggle Off 且綁定複合鍵)
       const handleVoteTime = async (raidId, timeIndex, choice) => {
         if (!activeCharacter.ign) {
           showToast("請先點擊右上角設定您的遊戲角色卡才能進行投票！", "error");
@@ -932,7 +1082,6 @@
           const raidRef = db.doc(`artifacts/${appId}/public/data/raids/${raidId}`);
           let updatedVotes = [...(raid.votes || [])];
           
-          // 💡 複合鍵匹配：同時核對 userId、IGN 與職業 Job，達成多分身獨立投票
           const userVoteIndex = updatedVotes.findIndex(v => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job);
 
           if (userVoteIndex > -1) {
@@ -941,31 +1090,26 @@
             userVote.level = activeCharacter.level;
             userVote.memo = (activeCharacter.memo || '').trim();
 
-            // 💡 [反選智慧識別邏輯]: 如果當前點擊的選項跟之前投的完全相同，則視為取消
             if (userVote.votes && userVote.votes[timeIndex] === choice) {
               const nextVotes = { ...userVote.votes };
-              delete nextVotes[timeIndex]; // 移除此時段的投票紀錄
+              delete nextVotes[timeIndex];
               userVote.votes = nextVotes;
 
-              // 檢查該成員在所有時段是否已經沒有任何有效投票
               const activeVotesCount = Object.values(nextVotes).filter(v => v === 'yes' || v === 'maybe' || v === 'no').length;
               if (activeVotesCount === 0) {
-                // 若沒有任何投票紀錄，則將該使用者整筆投票資料從 votes 中移除，維護資料庫清潔度
                 updatedVotes = updatedVotes.filter((_, idx) => idx !== userVoteIndex);
               } else {
                 updatedVotes[userVoteIndex] = userVote;
               }
               await raidRef.update({ votes: updatedVotes });
-              showToast("已取消該時段投票！");
+              showToast("已取消投票意願！");
             } else {
-              // 一般新增或變更投票 (例如從 'maybe' 變為 'yes')
               userVote.votes = { ...userVote.votes, [timeIndex]: choice };
               updatedVotes[userVoteIndex] = userVote;
               await raidRef.update({ votes: updatedVotes });
-              showToast("投票成功！");
+              showToast("意願更新成功！");
             }
           } else {
-            // 首次投票
             updatedVotes.push({
               userId: customUid,
               ign: activeCharacter.ign,
@@ -975,18 +1119,18 @@
               votes: { [timeIndex]: choice }
             });
             await raidRef.update({ votes: updatedVotes });
-            showToast("投票成功！");
+            showToast("成功表達意願！");
           }
         } catch (err) {
-          showToast(`投票失敗: ${err.message}`, "error");
+          showToast(`更新失敗: ${err.message}`, "error");
         }
       };
 
-      // 💡 圖 1 支援：管理者一鍵剃除已經投票者的投票紀錄
+      // 💡 管理者一鍵剃除已經投票者的投票紀錄
       const handleRemoveVote = (raidId, targetUserId, targetIgn, targetJob) => {
         triggerConfirm(
           "確定要剃除此投票紀錄嗎？",
-          `這將會清除玩家 【${targetIgn}】 (${targetJob}) 在此遠征隊的所有候選時間投票紀錄。`,
+          `這將會清除玩家 【${targetIgn}】 (${targetJob}) 在此遠征隊的所有投票意願。`,
           async () => {
             const raid = raids.find(r => r.id === raidId);
             if (!raid) return;
@@ -1004,11 +1148,10 @@
         );
       };
 
-      // 一鍵錄取投票人員 (一鍵排班 - 複合鍵綁定防重覆，自動帶入角色儲存的專屬備註)
+      // 一鍵錄取投票人員 (一鍵排班 - 自動帶入角色儲存的專屬備註)
       const handleQuickEnroll = async (raidId, voter) => {
         const raid = raids.find(r => r.id === raidId);
         if (!raid) return;
-        // 💡 複合鍵匹配核對：同時核對 ID、IGN、Job
         if (raid.participants?.some(p => p.userId === voter.userId && p.ign === voter.ign && p.job === voter.job)) {
           showToast(`${voter.ign} (${voter.job}) 已經在名單中囉！`, "error");
           return;
@@ -1021,7 +1164,7 @@
             ign: voter.ign,
             job: voter.job || '未知',
             level: voter.level || 120,
-            memo: voter.memo || '', // 💡 自動完美繼承投票者寫在角色卡上的備註！
+            memo: voter.memo || '', 
             party: 'reserve'
           });
           await raidRef.update({ participants: updatedParticipants });
@@ -1031,7 +1174,7 @@
         }
       };
 
-      // 分組 (綁定 customUid + ign + job 複合鍵)
+      // 分組
       const handleAssignParty = async (raidId, targetUserId, targetIgn, targetJob, targetParty) => {
         const raid = raids.find(r => r.id === raidId);
         if (!raid) return;
@@ -1047,7 +1190,7 @@
         }
       };
 
-      // 踢人 (修正 raids.find 尋找邏輯 typo 💡)
+      // 踢人
       const handleKickParticipant = (raidId, targetUserId, targetIgn, targetJob) => {
         triggerConfirm(
           "確定要移出此玩家嗎？",
@@ -1066,15 +1209,30 @@
         );
       };
 
+      // 💡 團長自定義增減小隊組數
+      const handleUpdatePartyCount = async (raidId, count) => {
+        if (!db || !raidId) return;
+        try {
+          await db.doc(`artifacts/${appId}/public/data/raids/${raidId}`).update({
+            partyCount: count
+          });
+          showToast(`已成功調整小隊數為 ${count} 隊！`);
+        } catch (err) {
+          showToast(`調整小隊失敗: ${err.message}`, "error");
+        }
+      };
+
       // 複製排班表格式
       const copyGroupFormat = (raid) => {
         const raidBoss = bosses.find(b => b.id === raid.bossId);
         let bestTimeText = "待定";
-        if (typeof raid.finalTimeIndex === 'number' && raid.proposedTimes?.[raid.finalTimeIndex]) {
+        if (raid.mode === 'interest') {
+          bestTimeText = "意願調查模式 (時間線上協調討論中) 💬";
+        } else if (typeof raid.finalTimeIndex === 'number' && raid.proposedTimes?.[raid.finalTimeIndex]) {
           bestTimeText = formatDateTime(raid.proposedTimes[raid.finalTimeIndex]) + " (已由管理員最終確定) 👑";
         } else {
           let maxYesCount = -1;
-          raid.proposedTimes.forEach((time, index) => {
+          raid.proposedTimes?.forEach((time, index) => {
             const yesVotes = raid.votes?.filter(v => v.votes?.[index] === 'yes').length || 0;
             if (yesVotes > maxYesCount) {
               maxYesCount = yesVotes;
@@ -1088,6 +1246,8 @@
         const party2 = participants.filter(p => p.party === '2');
         const party3 = participants.filter(p => p.party === '3');
         const reserves = participants.filter(p => p.party === 'reserve' || !p.party);
+
+        const partyCount = raid.partyCount || (raidBoss?.maxPlayers > 12 ? 3 : (raidBoss?.maxPlayers > 6 ? 2 : 1));
 
         let text = `⚔️ **【Artale 遠征隊公車】${raidBoss?.name || ''}** ⚔️\n`;
         text += `📌 **主題**：${raid.title}\n`;
@@ -1107,8 +1267,8 @@
         };
 
         text += formatParty(party1, '🔵 【遠征一隊】');
-        if (raidBoss?.maxPlayers > 6) text += formatParty(party2, '🟢 【遠征二隊】');
-        if (raidBoss?.maxPlayers > 12) text += formatParty(party3, '🟣 【遠征三隊】');
+        if (partyCount >= 2) text += formatParty(party2, '🟢 【遠征二隊】');
+        if (partyCount >= 3) text += formatParty(party3, '🟣 【遠征三隊】');
         if (reserves.length > 0) {
           text += `\n🔸 **【候補名單】**：\n`;
           reserves.forEach(p => {
@@ -1131,30 +1291,26 @@
         document.body.removeChild(textarea);
       };
 
-      // 💡 動態計算當前選中的遠征隊與 Boss（結合自訂 Boss 實時更新）
+      // 💡 動態計算當前選中的遠征隊與 Boss
       const activeRaid = raids.find(r => r.id === currentRaidId);
       const boss = activeRaid ? bosses.find(b => b.id === activeRaid.bossId) : null;
 
-      // 💡 運算邏輯：計算我「當前啟用角色與職業」參與的出團日程列表 (已精確綁定複合鍵)
+      // 💡 運算邏輯：計算我「當前啟用角色與職業」參與的出團日程列表
       const myScheduleRaids = raids.filter(raid => {
         if (!activeCharacter.ign) return false;
-        // 1. 我當前的分身在這個團投過 '可以' 或是 '也許'
         const hasVotedActive = raid.votes?.some(v => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job && Object.values(v.votes || {}).some(choice => choice === 'yes' || choice === 'maybe'));
-        // 2. 我當前的分身已經在出團名單中
         const isEnrolledActive = raid.participants?.some(p => p.userId === customUid && p.ign === activeCharacter.ign && p.job === activeCharacter.job);
         return hasVotedActive || isEnrolledActive;
       });
 
       const isCreator = user && activeRaid ? isAdminLoggedIn : false;
-
-      // 過濾出僅屬於自訂建立的 Boss 列表（用於刪除列表展示）
       const customBossesList = bosses.filter(b => b.isCustom || !DEFAULT_BOSS_LIST.some(d => d.id === b.id));
 
       return (
         <div className="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col justify-between">
           
           <div>
-            {/* 頂部導航列 - 100% 乾淨防呆，提供實時連線狀態 */}
+            {/* 頂部導航列 */}
             <header className="sticky top-0 z-30 bg-slate-900/80 backdrop-blur border-b border-slate-800 px-4 py-3.5 shadow-lg">
               <div className="max-w-6xl mx-auto flex items-center justify-between font-bold">
                 <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentRaidId(null)}>
@@ -1168,12 +1324,12 @@
                       className="text-xs text-slate-500 select-none cursor-pointer active:text-amber-400 hover:text-slate-400 transition"
                       title="快速點擊5次可管理金鑰"
                     >
-                      MSW 懷舊楓之谷出團小助手
+                      不負責宣告：Hi我是純粹，壞掉不要找我歐✧｡٩(ˊᗜˋ)و✧｡
                     </p>
                   </div>
                 </div>
 
-                {/* 右側玩家角色卡 + 🔄 多身分快速切換選單 */}
+                {/* 右側玩家角色卡 + 🔄 多身分快速切換 */}
                 <div className="flex items-center space-x-2.5">
                   <div className="hidden sm:block">
                     {dbStatus === 'connecting' && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1 rounded-lg text-xs font-bold animate-pulse">⏳ 連線中</span>}
@@ -1183,7 +1339,6 @@
 
                   {profileLoaded ? (
                     <div className="flex items-center space-x-2">
-                      {/* 當前活躍角色展示 - 微縮圖標 💡 */}
                       <button 
                         onClick={() => setShowProfileModal(true)}
                         className="bg-slate-900/95 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-xl px-4 py-2.5 flex items-center transition text-base shadow-md"
@@ -1203,7 +1358,6 @@
                         )}
                       </button>
 
-                      {/* 🔄 快速切換下拉選單 */}
                       {profile.characters && profile.characters.length > 1 && (
                         <select
                           value={profile.activeCharacterIndex}
@@ -1259,7 +1413,7 @@
                         支援多身分角色登錄！隊員可線上自主投票時間、隨時切換角色報名打王。
                       </p>
                       <div className="mt-6 flex flex-wrap gap-3">
-                        {/* 💡 權限限制：只有系統管理員登入時，才可點選發起全新遠征隊揪團，以及自訂 Boss 與職業分類 */}
+                        {/* 💡 權限限制：只有管理員能發起與設置 */}
                         {isAdminLoggedIn && (
                           <>
                             <button 
@@ -1284,7 +1438,7 @@
                         )}
                         <button 
                           onClick={() => setShowProfileModal(true)}
-                          className="bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold px-5 py-3 rounded-xl border border-slate-700 transition text-sm md:text-base"
+                          className="bg-slate-800 hover:bg-slate-755 text-slate-200 font-bold px-5 py-3 rounded-xl border border-slate-700 transition text-sm md:text-base"
                         >
                           ⚙️ 管理我的角色卡 / 備份
                         </button>
@@ -1292,19 +1446,18 @@
                     </div>
                   </div>
 
-                  {/* 我的出團日程 Dashboard (投票/錄取) */}
+                  {/* 我的出團日程 Dashboard */}
                   {activeCharacter.ign && (
                     <div className="mb-8 p-6 bg-slate-900/80 border border-slate-800 rounded-3xl shadow-xl">
                       <h3 className="text-lg font-black text-amber-400 mb-3.5 flex items-center space-x-2">
-                        <span>📅 我的出團日程 (當前切換：【{activeCharacter.ign} ({activeCharacter.job})】)</span>
+                        <span>📅 我的出團日程 (當前：【{activeCharacter.ign} ({activeCharacter.job})】)</span>
                       </h3>
                       {myScheduleRaids.length === 0 ? (
-                        <p className="text-sm text-slate-500 italic">當前角色尚未投票或報名任何進行中的遠征隊。快去下方投票吧！</p>
+                        <p className="text-sm text-slate-500 italic">當前角色尚未投票 or 報名任何進行中的遠征隊。快去下方投票吧！</p>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           {myScheduleRaids.map((raid) => {
                             const raidBoss = bosses.find(b => b.id === raid.bossId);
-                            // 檢查是否被分派到小隊了
                             const participantInfo = raid.participants?.find(p => p.userId === customUid && p.ign === activeCharacter.ign && p.job === activeCharacter.job);
                             let enrollmentStatus = "已投票（待排班錄取）";
                             if (participantInfo) {
@@ -1334,6 +1487,8 @@
                                   <h4 className="text-sm font-extrabold text-slate-200 line-clamp-1">{raid.title}</h4>
                                   {finalizedTimeStr ? (
                                     <p className="text-xs text-amber-300 font-bold mt-1">📅 出團時間：{finalizedTimeStr} 👑</p>
+                                  ) : raid.mode === 'interest' ? (
+                                    <p className="text-xs text-indigo-300 font-bold mt-1">🙋 意願調查與時間協調中 💬</p>
                                   ) : (
                                     <p className="text-xs text-slate-400 mt-1 italic">⏰ 出團時間投票中</p>
                                   )}
@@ -1393,10 +1548,18 @@
                                 {raid.notes || "沒有提供備註說明。"}
                               </p>
 
-                              {/* 💡 大廳卡片同步顯示黃底確定時間 */}
-                              {hasFinalTime && (
+                              {/* 💡 根據模式呈現大廳狀態徽章 */}
+                              {raid.mode === 'interest' ? (
+                                <div className="mt-2.5 bg-indigo-650/30 border border-indigo-500/40 text-indigo-300 text-xs font-black px-3.5 py-2 rounded-xl flex items-center space-x-1.5 w-max select-none shadow">
+                                  <span>🙋 意願調查與即時討論中 💬</span>
+                                </div>
+                              ) : hasFinalTime ? (
                                 <div className="mt-2.5 bg-amber-400 text-slate-950 text-xs font-black px-3.5 py-2 rounded-xl flex items-center space-x-1.5 w-max select-none shadow">
                                   <span>📅 出團時間：{formatDateTime(raid.proposedTimes[raid.finalTimeIndex])} 👑</span>
+                                </div>
+                              ) : (
+                                <div className="mt-2.5 bg-slate-950/80 border border-slate-800 text-slate-400 text-xs font-medium px-3.5 py-2 rounded-xl flex items-center space-x-1.5 w-max select-none">
+                                  <span>⏰ 出團日期投票中</span>
                                 </div>
                               )}
                             </div>
@@ -1411,11 +1574,11 @@
                                 <span className="flex items-center space-x-1.5">
                                   <span>🗳️</span>
                                   <strong>{voteCount}</strong>
-                                  <span>人投票</span>
+                                  <span>人表態</span>
                                 </span>
                               </div>
                               <span className="text-indigo-400 font-bold hover:underline flex items-center space-x-1">
-                                <span>進入揪團系統 ➜</span>
+                                <span>進入組隊與討論 ➜</span>
                               </span>
                             </div>
                           </div>
@@ -1435,13 +1598,13 @@
                   </button>
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* 左欄：基本資訊與投票 */}
-                    <div className="lg:col-span-3 space-y-6">
+                    {/* 左欄 (2/3)：基本資訊與「日期投票」/「意願收集」 */}
+                    <div className="lg:col-span-2 space-y-6">
                       <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
                         <div className={`p-8 bg-gradient-to-r ${boss?.color || 'from-slate-700 to-black'} text-white relative`}>
                           <div className="absolute right-6 top-6 opacity-20 text-7xl">{boss?.icon || '👹'}</div>
                           <span className="bg-black/30 text-white font-bold text-xs px-3 py-1 rounded-full uppercase tracking-wider backdrop-blur">
-                            遠征隊出征
+                            {activeRaid.mode === 'interest' ? '🙋 意願收集團' : '📅 指定日期團'}
                           </span>
                           <h2 className="text-2xl md:text-3xl font-black mt-4">{activeRaid.title}</h2>
                           <p className="text-white/90 text-sm md:text-base mt-2">{boss?.name || '未知 Boss'} • 團隊上限最多 {boss?.maxPlayers || 18} 人</p>
@@ -1467,7 +1630,6 @@
                                 📋 複製公告排班表
                               </button>
                               
-                              {/* 💡 編輯與刪除本團：現在只提供給已登入管理員 */}
                               {isCreator && (
                                 <>
                                   <button
@@ -1489,47 +1651,42 @@
                         </div>
                       </div>
 
-                      {/* 時間投票區 */}
-                      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
-                        <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-4">
-                          <div>
-                            <h3 className="text-lg md:text-xl font-extrabold text-white">📅 候選出團時間投票</h3>
-                            <p className="text-xs md:text-sm text-slate-400 mt-1">
-                              請選擇可以配合的時間。<span className="text-amber-400 font-bold">（以右上角選取角色投票，再次點擊已選選項可「智慧反選」取消，自動綁定角色備註：{activeCharacter.memo || "無"}）</span>
-                            </p>
+                      {/* 💡 根據 Raid 模式，智慧載入對應的意願或日期投票面板 */}
+                      {activeRaid.mode === 'interest' ? (
+                        /* 意願調查模式（只有可以與不行兩個選項） */
+                        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+                          <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-4">
+                            <div>
+                              <h3 className="text-lg md:text-xl font-extrabold text-white">🙋 參與此突襲王意願調查</h3>
+                              <p className="text-xs md:text-sm text-slate-400 mt-1">
+                                本團為意願模式。請表達您是否有意願打這個突襲王？
+                                <span className="text-amber-400 font-bold">（再次點擊已選選項可「智慧反選」取消，自動同步備註）</span>
+                              </p>
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="space-y-6">
-                          {activeRaid.proposedTimes?.map((time, idx) => {
-                            const yesVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'yes') || [];
-                            const maybeVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'maybe') || [];
-                            const noVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'no') || [];
+                          {(() => {
+                            const interestVotes = activeRaid.votes || [];
+                            const yesVotes = interestVotes.filter(v => v.votes?.['interest'] === 'yes') || [];
+                            const noVotes = interestVotes.filter(v => v.votes?.['interest'] === 'no') || [];
 
-                            // 💡 投票比對時加入 Job 核對，實現同帳號/同名不同職業的獨立狀態展現
-                            const myVoteRecord = activeRaid.votes?.find(v => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job);
-                            const myChoice = myVoteRecord?.votes?.[idx] || null;
+                            const myVoteRecord = interestVotes.find(v => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job);
+                            const myChoice = myVoteRecord?.votes?.['interest'] || null;
 
-                            const isFinalized = activeRaid.finalTimeIndex === idx;
-
-                            // 💡 投票名冊排班顯示 (💡 100% 寬螢幕防擠壓裁切：已升級已錄取徽章，避免小勾勾不夠醒目)
-                            const renderVoterBadges = (votersList, badgeColor, emoji) => {
+                            const renderVoterBadges = (votersList, emoji) => {
                               if (votersList.length === 0) return null;
                               return (
                                 <div className="flex flex-wrap gap-2.5 mt-2">
                                   {votersList.map((voter, vIdx) => {
-                                    // 💡 複合鍵匹配核對：同時核對 userId, ign, job
                                     const alreadyInRaid = activeRaid.participants?.some(p => p.userId === voter.userId && p.ign === voter.ign && p.job === voter.job);
                                     return (
                                       <div 
                                         key={voter.userId + '-' + voter.ign + '-' + voter.job + '-' + vIdx}
-                                        className="inline-flex items-center space-x-2 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl text-sm transition hover:border-slate-700 max-w-full"
+                                        className="inline-flex items-center space-x-2 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl text-sm transition hover:border-slate-755 max-w-full"
                                       >
                                         <span className="text-base shrink-0">{emoji}</span>
-                                        {/* 💡 徹底解決長名字被截斷問題：使用 whitespace-nowrap 且移除限制性 truncate */}
-                                        <span className="font-extrabold text-slate-100 whitespace-nowrap font-sans" title={voter.ign}>{voter.ign}</span>
+                                        <span className="font-extrabold text-slate-100 whitespace-nowrap" title={voter.ign}>{voter.ign}</span>
                                         
-                                        {/* 💡 職業與等級徽章：微縮且高對比，微縮圖標尺寸為 w-3.5 h-3.5 避免遮擋 */}
                                         <span className="text-[11px] text-slate-400 font-bold shrink-0 flex items-center space-x-1 bg-slate-900 border border-slate-800/80 px-2 py-0.5 rounded-lg select-none">
                                           {voter.job && renderJobIcon(voter.job, "w-3.5 h-3.5")}
                                           <span className="text-slate-300 font-extrabold">{voter.job || '無職業'}</span>
@@ -1537,7 +1694,6 @@
                                           <span className="text-white font-mono font-bold">Lv.{voter.level || '?'}</span>
                                         </span>
 
-                                        {/* 💡 圖 3 變更點：投票備註顯示 改為精美的彈窗式「詳細資訊」按鈕 */}
                                         {voter.memo && (
                                           <button
                                             type="button"
@@ -1546,13 +1702,11 @@
                                               setVoterDetailModal({ isOpen: true, voter });
                                             }}
                                             className="text-[10px] bg-slate-900 hover:bg-slate-850 hover:border-slate-700 border border-slate-800 px-2 py-1 rounded text-amber-300 transition shrink-0 flex items-center space-x-1 font-bold active:scale-95"
-                                            title="點擊查看完整資料卡"
                                           >
-                                            <span>💬 詳細資訊</span>
+                                            <span>💬 詳細</span>
                                           </button>
                                         )}
                                         
-                                        {/* 💡 圖 1 新增與修復點：管理員可以隨時將已投票的人錄取 / 剃除 (已更換已錄取按鈕 💡) */}
                                         {isCreator && (
                                           <div className="flex items-center space-x-1.5 ml-2 border-l border-slate-800/85 pl-2">
                                             {alreadyInRaid ? (
@@ -1578,7 +1732,6 @@
                                                 handleRemoveVote(activeRaid.id, voter.userId, voter.ign, voter.job);
                                               }}
                                               className="bg-rose-950/60 hover:bg-rose-900 border border-rose-900 text-rose-300 font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
-                                              title="剃除此人在遠征隊的投票紀錄"
                                             >
                                               🗑️ 剃除
                                             </button>
@@ -1592,92 +1745,226 @@
                             };
 
                             return (
-                              <div 
-                                key={idx} 
-                                className={`p-5 rounded-2xl border transition-all duration-350 flex flex-col gap-4 ${isFinalized ? 'border-amber-400 bg-amber-500/20 shadow-xl shadow-amber-500/10 ring-2 ring-amber-400/50' : 'bg-slate-950/40 border-slate-800'}`}
-                              >
+                              <div className="p-5 rounded-2xl border bg-slate-950/40 border-slate-800 flex flex-col gap-5">
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                  <div className="flex-1">
-                                    <div className="flex items-center space-x-2.5">
-                                      <span className="text-xs font-bold text-indigo-400 font-mono">候選時間 #{idx + 1}</span>
-                                      {isFinalized && (
-                                        <span className="bg-amber-400 text-slate-950 text-[10.5px] font-black px-2.5 py-0.5 rounded-lg select-none shadow animate-pulse">
-                                          ★ 最終確定出團時間
-                                        </span>
-                                      )}
-                                    </div>
-                                    <h4 className="text-lg font-bold text-slate-200 mt-0.5">{formatDateTime(time)}</h4>
+                                  <div>
+                                    {/* 💡 文字優化：根據突襲王種類動態改寫 */}
+                                    <h4 className="text-base font-bold text-slate-200">
+                                      您本週是否有意願參加【{boss?.name.split(' (')[0] || '此突襲王'}】突襲團？
+                                    </h4>
+                                    <p className="text-xs text-slate-500 mt-1">請利用下方按鈕登載意願</p>
                                   </div>
-
-                                  <div className="flex items-center space-x-2">
+                                  <div className="flex items-center space-x-3">
                                     <button
-                                      onClick={() => handleVoteTime(activeRaid.id, idx, 'yes')}
-                                      className={`px-4 py-2 rounded-xl text-sm font-bold transition ${myChoice === 'yes' ? 'bg-emerald-600 text-white shadow shadow-emerald-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
+                                      onClick={() => handleVoteTime(activeRaid.id, 'interest', 'yes')}
+                                      className={`px-6 py-3 rounded-xl text-sm font-black transition flex items-center gap-1.5 active:scale-95 ${myChoice === 'yes' ? 'bg-emerald-600 text-white shadow shadow-emerald-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
                                     >
-                                      🟢 可以
+                                      <span>🟢 可以配合</span>
                                     </button>
                                     <button
-                                      onClick={() => handleVoteTime(activeRaid.id, idx, 'maybe')}
-                                      className={`px-4 py-2 rounded-xl text-sm font-bold transition ${myChoice === 'maybe' ? 'bg-amber-600 text-white shadow shadow-amber-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
+                                      onClick={() => handleVoteTime(activeRaid.id, 'interest', 'no')}
+                                      className={`px-6 py-3 rounded-xl text-sm font-black transition flex items-center gap-1.5 active:scale-95 ${myChoice === 'no' ? 'bg-rose-600 text-white shadow shadow-rose-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
                                     >
-                                      🟡 也許
+                                      <span>🔴 不行參戰</span>
                                     </button>
-                                    <button
-                                      onClick={() => handleVoteTime(activeRaid.id, idx, 'no')}
-                                      className={`px-4 py-2 rounded-xl text-sm font-bold transition ${myChoice === 'no' ? 'bg-rose-600 text-white shadow shadow-rose-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
-                                    >
-                                      🔴 不行
-                                    </button>
-
-                                    {/* 💡 管理員一鍵確定與取消此時間按鈕 */}
-                                    {isCreator && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleFinalizeTime(activeRaid.id, idx)}
-                                        className={`ml-2 px-3.5 py-2 rounded-xl text-xs font-black transition ${isFinalized ? 'bg-slate-900 border border-amber-500/40 text-amber-400 hover:bg-slate-850' : 'bg-amber-400 text-slate-950 hover:bg-amber-300'}`}
-                                      >
-                                        {isFinalized ? '❌ 取消確定' : '🎯 確定此時間'}
-                                      </button>
-                                    )}
                                   </div>
                                 </div>
 
-                                <div className="border-t border-slate-800/85 pt-3 space-y-2">
-                                  {yesVotes.length > 0 && (
-                                    <div>
-                                      <span className="text-xs text-emerald-400 font-bold block mb-1">🟢 可以配合的隊員：</span>
-                                      {renderVoterBadges(yesVotes, 'text-emerald-400', '🟢')}
-                                    </div>
-                                  )}
-                                  {maybeVotes.length > 0 && (
-                                    <div>
-                                      <span className="text-xs text-amber-400 font-bold block mb-1">🟡 可能配合的隊員：</span>
-                                      {renderVoterBadges(maybeVotes, 'text-amber-400', '🟡')}
-                                    </div>
-                                  )}
-                                  {noVotes.length > 0 && (
-                                    <div>
-                                      <span className="text-xs text-rose-400 font-bold block mb-1">🔴 無法配合的隊員：</span>
-                                      {renderVoterBadges(noVotes, 'text-rose-400', '🔴')}
-                                    </div>
-                                  )}
-                                  {yesVotes.length === 0 && maybeVotes.length === 0 && noVotes.length === 0 && (
-                                    <span className="text-slate-600 text-xs italic block py-1">目前尚無人對此時間段投票</span>
-                                  )}
+                                <div className="border-t border-slate-800/85 pt-4 space-y-3">
+                                  <div>
+                                    <span className="text-xs text-emerald-400 font-bold block mb-1">🟢 可以配合的隊員 ({yesVotes.length} 人)：</span>
+                                    {yesVotes.length > 0 ? renderVoterBadges(yesVotes, '🟢') : <span className="text-slate-600 text-xs italic block py-1">目前尚無人表達有意願</span>}
+                                  </div>
+                                  <div>
+                                    <span className="text-xs text-rose-400 font-bold block mb-1">🔴 不行參戰的隊員 ({noVotes.length} 人)：</span>
+                                    {noVotes.length > 0 ? renderVoterBadges(noVotes, '🔴') : <span className="text-slate-600 text-xs italic block py-1">目前尚無人表達不行</span>}
+                                  </div>
                                 </div>
                               </div>
                             );
-                          })}
+                          })()}
                         </div>
-                      </div>
+                      ) : (
+                        /* 日期時間投票模式 */
+                        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+                          <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-4">
+                            <div>
+                              <h3 className="text-lg md:text-xl font-extrabold text-white">📅 候選出團時間投票</h3>
+                              <p className="text-xs md:text-sm text-slate-400 mt-1">
+                                請選擇可以配合的時間。<span className="text-amber-400 font-bold">（自動綁定當前選取角色與預設備註）</span>
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-6">
+                            {activeRaid.proposedTimes?.map((time, idx) => {
+                              const yesVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'yes') || [];
+                              const maybeVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'maybe') || [];
+                              const noVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'no') || [];
+
+                              const myVoteRecord = activeRaid.votes?.find(v => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job);
+                              const myChoice = myVoteRecord?.votes?.[idx] || null;
+
+                              const isFinalized = activeRaid.finalTimeIndex === idx;
+
+                              const renderVoterBadges = (votersList, emoji) => {
+                                if (votersList.length === 0) return null;
+                                return (
+                                  <div className="flex flex-wrap gap-2.5 mt-2">
+                                    {votersList.map((voter, vIdx) => {
+                                      const alreadyInRaid = activeRaid.participants?.some(p => p.userId === voter.userId && p.ign === voter.ign && p.job === voter.job);
+                                      return (
+                                        <div 
+                                          key={voter.userId + '-' + voter.ign + '-' + voter.job + '-' + vIdx}
+                                          className="inline-flex items-center space-x-2 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl text-sm transition hover:border-slate-755 max-w-full"
+                                        >
+                                          <span className="text-base shrink-0">{emoji}</span>
+                                          <span className="font-extrabold text-slate-100 whitespace-nowrap" title={voter.ign}>{voter.ign}</span>
+                                          
+                                          <span className="text-[11px] text-slate-400 font-bold shrink-0 flex items-center space-x-1 bg-slate-900 border border-slate-800/80 px-2 py-0.5 rounded-lg select-none">
+                                            {voter.job && renderJobIcon(voter.job, "w-3.5 h-3.5")}
+                                            <span className="text-slate-300 font-extrabold">{voter.job || '無職業'}</span>
+                                            <span className="text-slate-500">•</span>
+                                            <span className="text-white font-mono font-bold">Lv.{voter.level || '?'}</span>
+                                          </span>
+
+                                          {voter.memo && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setVoterDetailModal({ isOpen: true, voter });
+                                              }}
+                                              className="text-[10px] bg-slate-900 hover:bg-slate-850 hover:border-slate-700 border border-slate-800 px-2 py-1 rounded text-amber-300 transition shrink-0 flex items-center space-x-1 font-bold active:scale-95"
+                                            >
+                                              <span>💬 詳細</span>
+                                            </button>
+                                          )}
+                                          
+                                          {isCreator && (
+                                            <div className="flex items-center space-x-1.5 ml-2 border-l border-slate-800/85 pl-2">
+                                              {alreadyInRaid ? (
+                                                <span className="text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded text-xs shrink-0 select-none">
+                                                  已錄取
+                                                </span>
+                                              ) : (
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleQuickEnroll(activeRaid.id, voter);
+                                                  }}
+                                                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
+                                                >
+                                                  ➕ 錄取
+                                                </button>
+                                              )}
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleRemoveVote(activeRaid.id, voter.userId, voter.ign, voter.job);
+                                                }}
+                                                className="bg-rose-950/60 hover:bg-rose-900 border border-rose-900 text-rose-300 font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
+                                              >
+                                                🗑️ 剃除
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              };
+
+                              return (
+                                <div 
+                                  key={idx} 
+                                  className={`p-5 rounded-2xl border transition-all duration-350 flex flex-col gap-4 ${isFinalized ? 'border-amber-400 bg-amber-500/20 shadow-xl shadow-amber-500/10 ring-2 ring-amber-400/50' : 'bg-slate-950/40 border-slate-800'}`}
+                                >
+                                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div className="flex-1">
+                                      <div className="flex items-center space-x-2.5">
+                                        <span className="text-xs font-bold text-indigo-400 font-mono">候選時間 #{idx + 1}</span>
+                                        {isFinalized && (
+                                          <span className="bg-amber-400 text-slate-950 text-[10.5px] font-black px-2.5 py-0.5 rounded-lg select-none shadow animate-pulse">
+                                            ★ 最終確定出團時間
+                                          </span>
+                                        )}
+                                      </div>
+                                      <h4 className="text-lg font-bold text-slate-200 mt-0.5">{formatDateTime(time)}</h4>
+                                    </div>
+
+                                    <div className="flex items-center space-x-2">
+                                      <button
+                                        onClick={() => handleVoteTime(activeRaid.id, idx, 'yes')}
+                                        className={`px-4 py-2 rounded-xl text-sm font-bold transition ${myChoice === 'yes' ? 'bg-emerald-600 text-white shadow shadow-emerald-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
+                                      >
+                                        🟢 可以
+                                      </button>
+                                      <button
+                                        onClick={() => handleVoteTime(activeRaid.id, idx, 'maybe')}
+                                        className={`px-4 py-2 rounded-xl text-sm font-bold transition ${myChoice === 'maybe' ? 'bg-amber-600 text-white shadow shadow-amber-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
+                                      >
+                                        🟡 也許
+                                      </button>
+                                      <button
+                                        onClick={() => handleVoteTime(activeRaid.id, idx, 'no')}
+                                        className={`px-4 py-2 rounded-xl text-sm font-bold transition ${myChoice === 'no' ? 'bg-rose-600 text-white shadow shadow-rose-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
+                                      >
+                                        🔴 不行
+                                      </button>
+
+                                      {isCreator && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleFinalizeTime(activeRaid.id, idx)}
+                                          className={`ml-2 px-3.5 py-2 rounded-xl text-xs font-black transition ${isFinalized ? 'bg-slate-900 border border-amber-500/40 text-amber-400 hover:bg-slate-850' : 'bg-amber-400 text-slate-950 hover:bg-amber-300'}`}
+                                        >
+                                          {isFinalized ? '❌ 取消確定' : '🎯 確定此時間'}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="border-t border-slate-800/85 pt-3 space-y-2">
+                                    {yesVotes.length > 0 && (
+                                      <div>
+                                        <span className="text-xs text-emerald-400 font-bold block mb-1">🟢 可以配合的隊員：</span>
+                                        {renderVoterBadges(yesVotes, '🟢')}
+                                      </div>
+                                    )}
+                                    {maybeVotes.length > 0 && (
+                                      <div>
+                                        <span className="text-xs text-amber-400 font-bold block mb-1">🟡 可能配合的隊員：</span>
+                                        {renderVoterBadges(maybeVotes, '🟡')}
+                                      </div>
+                                    )}
+                                    {noVotes.length > 0 && (
+                                      <div>
+                                        <span className="text-xs text-rose-400 font-bold block mb-1">🔴 無法配合的隊員：</span>
+                                        {renderVoterBadges(noVotes, '🔴')}
+                                      </div>
+                                    )}
+                                    {yesVotes.length === 0 && maybeVotes.length === 0 && noVotes.length === 0 && (
+                                      <span className="text-slate-600 text-xs italic block py-1">目前尚無人對此時間段投票</span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
-                    {/* 右欄：出團管理區 */}
+                    {/* 右欄 (1/3)：團長排班工具（已移除原本固定的即時討論區，優化 layout 寬度） */}
                     <div className="space-y-6">
                       {isCreator && (
-                        <div className="bg-slate-900 border border-amber-500/20 rounded-3xl p-6 shadow-xl">
+                        <div className="bg-slate-900 border border-amber-500/20 rounded-3xl p-6 shadow-xl font-semibold">
                           <h3 className="text-base font-extrabold text-amber-400 mb-1.5">👑 團長排班工具</h3>
-                          <p className="text-xs text-slate-400 mb-4 leading-relaxed">請利用下方各隊名單中卡片底部的分組按鈕，直接將人員錄取、歸類或移出，變更將會即時同步！</p>
+                          <p className="text-xs text-slate-400 mb-4 leading-relaxed">請利用下方各隊名單中卡片底部的分組按鈕，直接將人員錄取、歸類 or 移出，變更將會即時同步！</p>
                           <button
                             onClick={() => handleResetRaid(activeRaid.id)}
                             className="w-full bg-slate-950 hover:bg-slate-900 border border-amber-500/30 text-amber-400 font-bold py-3 rounded-xl text-xs transition"
@@ -1696,6 +1983,8 @@
                     const party2 = participants.filter(p => p.party === '2');
                     const party3 = participants.filter(p => p.party === '3');
                     const reserves = participants.filter(p => p.party === 'reserve' || !p.party);
+
+                    const partyCount = activeRaid.partyCount || (boss?.maxPlayers > 12 ? 3 : (boss?.maxPlayers > 6 ? 2 : 1));
 
                     const renderRosterGroup = (title, pList, groupKey, color) => {
                       const slots = [...pList];
@@ -1738,16 +2027,14 @@
                                 return (
                                   <div 
                                     key={p.userId + '-' + p.ign + '-' + p.job} 
-                                    className="bg-slate-950/50 hover:bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col gap-3 transition shadow-sm hover:border-slate-750"
+                                    className="bg-slate-950/50 hover:bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col gap-3 transition shadow-sm hover:border-slate-755"
                                   >
-                                    {/* 頂行與次行改進：名字與職業勳章採用上下兩層架構，長玩家名稱全顯示 */}
                                     <div className="flex flex-col gap-2 min-w-0">
                                       <div className="flex items-start space-x-2 min-w-0">
                                         <span className="font-mono font-bold text-slate-500 text-base mt-0.5">{idx + 1}.</span>
                                         <span className="font-black text-slate-100 text-[17px] break-all whitespace-normal select-text leading-tight" title={p.ign}>{p.ign}</span>
                                       </div>
                                       
-                                      {/* 同步並排呈現：職業勳章與等級勳章 (微縮圖標 💡) */}
                                       <div className="flex flex-wrap items-center gap-1.5">
                                         <span className="text-xs bg-slate-900/95 text-indigo-300 px-2.5 py-1 rounded-lg font-black border border-slate-800 shrink-0 select-none flex items-center space-x-1.5">
                                           {renderJobIcon(p.job, "w-3.5 h-3.5")}
@@ -1759,7 +2046,6 @@
                                       </div>
                                     </div>
 
-                                    {/* 備註泡泡框 */}
                                     {p.memo && (
                                       <div className="bg-slate-900/90 border border-amber-500/10 text-amber-300 text-xs px-3.5 py-2.5 rounded-xl flex items-start space-x-2 leading-relaxed break-all">
                                         <span className="shrink-0 text-amber-400 mt-0.5">💬</span>
@@ -1767,7 +2053,6 @@
                                       </div>
                                     )}
 
-                                    {/* 底行：微縮管理按鈕 */}
                                     {isCreator && (
                                       <div className="flex flex-col gap-2 mt-1 pt-2.5 border-t border-slate-800/80 select-none">
                                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">調整隊長/小隊：</span>
@@ -1781,7 +2066,7 @@
                                                 一隊
                                               </button>
                                             )}
-                                            {groupKey !== '2' && boss?.maxPlayers > 6 && (
+                                            {groupKey !== '2' && partyCount >= 2 && (
                                               <button 
                                                 onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, p.job, '2')} 
                                                 className="bg-slate-900 hover:bg-slate-800 text-slate-200 text-[11px] px-2 py-1.5 rounded-lg border border-slate-800 transition font-bold"
@@ -1789,7 +2074,7 @@
                                                 二隊
                                               </button>
                                             )}
-                                            {groupKey !== '3' && boss?.maxPlayers > 12 && (
+                                            {groupKey !== '3' && partyCount >= 3 && (
                                               <button 
                                                 onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, p.job, '3')} 
                                                 className="bg-slate-900 hover:bg-slate-800 text-slate-200 text-[11px] px-2 py-1.5 rounded-lg border border-slate-800 transition font-bold"
@@ -1800,7 +2085,7 @@
                                             {groupKey !== 'reserve' && (
                                               <button 
                                                 onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, p.job, 'reserve')} 
-                                                className="bg-slate-900 hover:bg-slate-800 text-slate-200 text-[11px] px-2 py-1.5 rounded-lg border border-slate-800 transition font-bold"
+                                                className="bg-slate-900 hover:bg-slate-850 text-slate-200 text-[11px] px-2 py-1.5 rounded-lg border border-slate-800 transition font-bold"
                                               >
                                                 候補
                                               </button>
@@ -1826,11 +2111,44 @@
 
                     return (
                       <div className="mt-8">
-                        <h3 className="text-xl font-black text-white mb-5">👥 遠征小隊分組名單</h3>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-5 gap-3">
+                          <h3 className="text-xl font-black text-white">👥 遠征小隊分組名單</h3>
+                          
+                          {isCreator && (
+                            <div className="flex items-center space-x-2 bg-slate-900/60 p-1.5 rounded-xl border border-slate-800/80">
+                              <span className="text-xs text-slate-400 px-2 font-bold select-none">調整組數:</span>
+                              {partyCount < 2 && (
+                                <button 
+                                  onClick={() => handleUpdatePartyCount(activeRaid.id, 2)} 
+                                  className="bg-emerald-600/30 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 text-xs font-bold px-3 py-1.5 rounded-lg transition active:scale-95"
+                                >
+                                  ➕ 增加遠征二隊
+                                </button>
+                              )}
+                              {partyCount < 3 && partyCount >= 2 && (
+                                <button 
+                                  onClick={() => handleUpdatePartyCount(activeRaid.id, 3)} 
+                                  className="bg-violet-600/30 hover:bg-violet-600 border border-violet-500/40 text-violet-300 text-xs font-bold px-3 py-1.5 rounded-lg transition active:scale-95"
+                                >
+                                  ➕ 增加遠征三隊
+                                </button>
+                              )}
+                              {partyCount > 1 && (
+                                <button 
+                                  onClick={() => handleUpdatePartyCount(activeRaid.id, partyCount - 1)} 
+                                  className="bg-slate-800/60 hover:bg-slate-755 border border-slate-700 text-slate-300 text-xs font-bold px-3 py-1.5 rounded-lg transition active:scale-95"
+                                >
+                                  ➖ 減少小隊
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                           {renderRosterGroup('遠征一隊 (Party 1)', party1, '1', 'bg-blue-500')}
-                          {boss?.maxPlayers > 6 && renderRosterGroup('遠征二隊 (Party 2)', party2, '2', 'bg-emerald-500')}
-                          {boss?.maxPlayers > 12 && renderRosterGroup('遠征三隊 (Party 3)', party3, '3', 'bg-violet-500')}
+                          {partyCount >= 2 && renderRosterGroup('遠征二隊 (Party 2)', party2, '2', 'bg-emerald-500')}
+                          {partyCount >= 3 && renderRosterGroup('遠征三隊 (Party 3)', party3, '3', 'bg-violet-500')}
                           {renderRosterGroup('候補與預備名單 (Reserves)', reserves, 'reserve', 'bg-slate-500')}
                         </div>
                       </div>
@@ -1840,6 +2158,177 @@
               )}
             </main>
           </div>
+
+          {/* 💡 浮動討論區按鈕 & 懸浮即時聊天窗 */}
+          {activeRaid && (
+            <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end space-y-4">
+              {/* 懸浮討論區主視窗 (物理獨立且支援「🔳 放大全螢幕視窗模式」 👑) */}
+              {isChatOpen && (
+                <div className={`bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl flex flex-col transition-all duration-300 ease-in-out animate-in fade-in slide-in-from-bottom-5 ${
+                  isChatMaximized 
+                    ? "fixed inset-4 md:inset-10 md:m-auto md:w-full md:max-w-4xl md:h-[80vh] h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] z-50" 
+                    : "h-[520px] w-96 max-w-[calc(100vw-2rem)] max-h-[70vh]"
+                }`}>
+                  <div className="border-b border-slate-800 pb-3 mb-3 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xl">💬</span>
+                      <h3 className="font-extrabold text-base text-slate-100">遠征即時討論區</h3>
+                      <span className="bg-indigo-500/10 text-indigo-400 text-[10px] px-2.5 py-0.5 rounded-full font-bold">
+                        {chatMessages.length} 則訊息
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2.5">
+                      <span className="text-[10px] text-slate-500 animate-pulse">● 實時</span>
+                      
+                      {/* 💡 放大全螢幕按鈕 🔳 */}
+                      <button 
+                        type="button"
+                        onClick={() => setIsChatMaximized(!isChatMaximized)}
+                        className="text-slate-400 hover:text-white text-sm font-bold p-1 bg-slate-950/60 rounded-lg border border-slate-800/80 hover:border-slate-700 transition"
+                        title={isChatMaximized ? "恢復原本大小" : "放大至全螢幕"}
+                      >
+                        {isChatMaximized ? (
+                          /* Minimize SVG */
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7" />
+                          </svg>
+                        ) : (
+                          /* Maximize SVG */
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                          </svg>
+                        )}
+                      </button>
+
+                      {/* 關閉按鈕 ✕ */}
+                      <button 
+                        onClick={() => setIsChatOpen(false)}
+                        className="text-slate-400 hover:text-white text-sm font-bold p-1 bg-slate-950/60 rounded-lg border border-slate-800/80 hover:border-slate-700 transition"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 留言訊息列表 (💡 支援 Discord 風格未讀紅線分水嶺 🔴) */}
+                  <div 
+                    ref={chatContainerRef}
+                    className="flex-1 overflow-y-auto pr-1 space-y-3.5 mb-3 scrollbar-thin scrollbar-thumb-slate-800"
+                  >
+                    {chatMessages.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-600 italic">
+                        <span className="text-3xl mb-1">💬</span>
+                        <p className="text-xs">目前還沒有討論訊息，快來留言確認並協調出團時間吧！</p>
+                      </div>
+                    ) : (
+                      (() => {
+                        let hasRenderedRedLine = false;
+                        return chatMessages.map((msg, index) => {
+                          const isMe = msg.userId === customUid && msg.ign === activeCharacter.ign;
+                          const msgTime = msg.timestamp || (msg.createdAt?.seconds ? msg.createdAt.seconds * 1000 : 0);
+                          
+                          // 💡 判定是否需要在這條訊息上方插入 Discord 紅線
+                          const showRedLine = msgTime > chatOpenedLastReadTime && index > 0 && !hasRenderedRedLine;
+                          if (showRedLine) {
+                            hasRenderedRedLine = true;
+                          }
+
+                          const msgDate = new Date(msgTime);
+                          const timeString = msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                          return (
+                            <React.Fragment key={msg.id || index}>
+                              {/* 🔴 Discord 未讀分割紅線 */}
+                              {showRedLine && (
+                                <div className="flex items-center my-4 select-none">
+                                  <div className="flex-1 border-t-2 border-rose-500/70"></div>
+                                  <span className="mx-3 text-[10px] font-extrabold text-rose-400 bg-rose-950 border border-rose-500/45 px-3 py-1 rounded-md tracking-wider flex items-center space-x-1.5 shadow-md shadow-rose-950/50">
+                                    <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
+                                    <span>以下為新訊息</span>
+                                    <span className="opacity-50 font-normal font-mono">({timeString})</span>
+                                  </span>
+                                  <div className="flex-1 border-t-2 border-rose-500/70"></div>
+                                </div>
+                              )}
+
+                              <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1`}>
+                                {/* 💡 比照「圖3」進行高寬度、大字型、高對比的 IGN 與職業名牌設計 (完美放大 👑) */}
+                                <div className={`flex flex-wrap items-center gap-2 mb-0.5 ${isMe ? 'flex-row-reverse' : ''}`}>
+                                  {/* IGN 遊戲名稱 (高清晰放大) */}
+                                  <span className="text-sm md:text-base font-black text-slate-100 select-text tracking-wide">{msg.ign}</span>
+                                  
+                                  {/* 職業專屬身分勳章氣泡 */}
+                                  <span className="inline-flex items-center space-x-1.5 bg-slate-950/90 border border-slate-800 px-2.5 py-0.5 rounded-lg text-xs font-bold select-none shadow">
+                                    {renderJobIcon(msg.job, "w-4 h-4")}
+                                    <span className="text-slate-300 font-extrabold">{msg.job}</span>
+                                    <span className="text-slate-600">•</span>
+                                    <span className="text-amber-400 font-mono font-black">Lv.{msg.level || '?'}</span>
+                                  </span>
+
+                                  {/* 傳送時間 */}
+                                  <span className="text-[10px] text-slate-500 font-mono self-end">
+                                    {timeString}
+                                  </span>
+                                </div>
+
+                                {/* 對話泡泡 */}
+                                <div className={`px-4 py-2.5 rounded-2xl max-w-[90%] text-sm leading-relaxed break-all ${
+                                  isMe 
+                                    ? 'bg-indigo-600 text-white rounded-tr-none shadow shadow-indigo-600/10' 
+                                    : 'bg-slate-950 text-slate-200 rounded-tl-none border border-slate-800'
+                                }`}>
+                                  {msg.text}
+                                </div>
+                              </div>
+                            </React.Fragment>
+                          );
+                        });
+                      })()
+                    )}
+                  </div>
+
+                  {/* 輸入欄 */}
+                  <form onSubmit={handleSendMessage} className="flex gap-2 border-t border-slate-800/80 pt-3">
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      placeholder={activeCharacter.ign ? "輸入訊息與大家討論..." : "請先設定角色卡才能發言"}
+                      disabled={!activeCharacter.ign}
+                      className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none placeholder-slate-600 disabled:opacity-50"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!chatInput.trim() || !activeCharacter.ign}
+                      className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black px-4 py-2 rounded-xl transition disabled:opacity-40"
+                    >
+                      傳送
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* 滾動跟隨懸浮按鈕 */}
+              <button
+                onClick={() => setIsChatOpen(!isChatOpen)}
+                className="bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white font-black p-4 rounded-full shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 hover:scale-105 active:scale-95 transition-all duration-200 flex items-center justify-center relative group select-none"
+              >
+                <span className="text-2xl">💬</span>
+                {/* 鼠標 hover 時滑出導覽文字 */}
+                <span className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 ease-out whitespace-nowrap font-extrabold text-xs pl-0 group-hover:pl-2">
+                  遠征即時討論區
+                </span>
+                
+                {/* 🔴 精確計算未讀訊息行數的紅色氣泡 */}
+                {getUnreadCount(activeRaid.id) > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full ring-2 ring-slate-950 animate-pulse select-none">
+                    {getUnreadCount(activeRaid.id)}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
 
           {/* 底部隱私資訊 */}
           <footer className="max-w-6xl mx-auto w-full px-4 py-8 text-center text-xs text-slate-700 border-t border-slate-900 mt-10 font-semibold">
@@ -1858,24 +2347,52 @@
           </footer>
 
           {/* ==========================================
-              A. 發起揪團彈出視窗
+              A. 發起揪團彈出視窗 (支援 日期與意願 二選一 👑)
              ========================================== */}
           {isCreating && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto font-semibold">
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl relative my-8">
-                <button onClick={() => setIsCreating(false)} className="absolute right-4 top-4 text-slate-400 hover:text-white text-xl">✕</button>
+                <button onClick={() => setIsCreating(false)} className="absolute right-4 top-4 text-slate-400 hover:text-white text-xl font-bold">✕</button>
                 <h3 className="text-xl font-extrabold text-white mb-2">🍁 發起全新遠征隊揪團</h3>
-                <p className="text-xs text-slate-400 mb-6">點選下方日曆選擇出團時間，發起線上投票！</p>
+                <p className="text-xs text-slate-400 mb-6">請選擇出團模式與預設小隊組數，設定您的挑戰主題！</p>
 
-                <form onSubmit={handleCreateRaid} className="space-y-4 text-sm font-semibold">
+                <form onSubmit={handleCreateRaid} className="space-y-4 text-sm">
+                  
+                  {/* 💡 模式二選一選擇器 */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">選擇挑戰 Boss</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">1. 選擇揪團模式 (Raid Mode)</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setNewRaid({ ...newRaid, mode: 'datetime' })}
+                        className={`py-3 px-4 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 ${newRaid.mode !== 'interest' ? 'bg-indigo-600/20 border-indigo-500 text-white shadow' : 'bg-slate-950 border-slate-855 text-slate-400'}`}
+                      >
+                        <span className="font-bold text-xs">📅 指定日期時間</span>
+                        <span className="text-[10px] opacity-75 font-normal">填寫具體時間供成員排班投票</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewRaid({ ...newRaid, mode: 'interest' })}
+                        className={`py-3 px-4 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 ${newRaid.mode === 'interest' ? 'bg-indigo-600/20 border-indigo-500 text-white shadow' : 'bg-slate-950 border-slate-855 text-slate-400'}`}
+                      >
+                        <span className="font-bold text-xs">🙋 收集出團意願</span>
+                        <span className="text-[10px] opacity-75 font-normal">只調查「可以/不行」線上再協同</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">2. 選擇挑戰 Boss</label>
                     <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto pr-1">
                       {bosses.map((b) => (
                         <button
                           key={b.id}
                           type="button"
-                          onClick={() => setNewRaid({ ...newRaid, bossId: b.id })}
+                          onClick={() => {
+                            // 💡 點選 Boss 時，自動根據其最大上限預判與推薦小隊組數 (12人推薦2隊，18人推薦3隊，其餘1隊)
+                            const defaultParties = b.maxPlayers > 12 ? 3 : (b.maxPlayers > 6 ? 2 : 1);
+                            setNewRaid({ ...newRaid, bossId: b.id, partyCount: defaultParties });
+                          }}
                           className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition ${newRaid.bossId === b.id ? 'bg-slate-800 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-850 text-slate-300'}`}
                         >
                           <span className="text-2xl">{b.icon || '👹'}</span>
@@ -1888,8 +2405,29 @@
                     </div>
                   </div>
 
+                  {/* 💡 3. 設定預設小隊組數 */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">揪團主題 / 團隊公告</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">3. 設定預設小隊組數 (Party Count)</label>
+                    <div className="flex gap-2">
+                      {[1, 2, 3].map((count) => (
+                        <button
+                          key={count}
+                          type="button"
+                          onClick={() => setNewRaid({ ...newRaid, partyCount: count })}
+                          className={`flex-1 py-2.5 rounded-xl border text-center font-bold text-xs transition-all ${
+                            newRaid.partyCount === count
+                              ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow ring-1 ring-amber-450'
+                              : 'bg-slate-950 border-slate-855 text-slate-400 hover:border-slate-800'
+                          }`}
+                        >
+                          {count === 1 ? '🔵 一隊 (6人)' : count === 2 ? '🟢 二隊 (12人)' : '🟣 三隊 (18人)'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">4. 揪團主題 / 團隊公告</label>
                     <input
                       type="text"
                       required
@@ -1900,48 +2438,51 @@
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5 flex items-center justify-between">
-                      <span>📅 候選日期與時間</span>
-                      <button
-                        type="button"
-                        onClick={() => setNewRaid({ ...newRaid, proposedTimes: [...newRaid.proposedTimes, ''] })}
-                        className="text-xs text-indigo-400 hover:underline font-bold"
-                      >
-                        + 新增時間段
-                      </button>
-                    </label>
-                    <div className="space-y-2">
-                      {newRaid.proposedTimes.map((time, index) => (
-                        <div key={index} className="flex items-center space-x-2">
-                          <input
-                            type="datetime-local"
-                            required
-                            value={time}
-                            onChange={(e) => {
-                              const updated = [...newRaid.proposedTimes];
-                              updated[index] = e.target.value;
-                              setNewRaid({ ...newRaid, proposedTimes: updated });
-                            }}
-                            style={{ colorScheme: 'dark' }}
-                            className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
-                          />
-                          {newRaid.proposedTimes.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated = newRaid.proposedTimes.filter((_, i) => i !== index);
+                  {/* 💡 當模式為日期時才需要顯示日期選擇器 */}
+                  {newRaid.mode !== 'interest' && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5 flex items-center justify-between">
+                        <span>📅 候選日期與時間</span>
+                        <button
+                          type="button"
+                          onClick={() => setNewRaid({ ...newRaid, proposedTimes: [...newRaid.proposedTimes, ''] })}
+                          className="text-xs text-indigo-400 hover:underline font-bold"
+                        >
+                          + 新增時間段
+                        </button>
+                      </label>
+                      <div className="space-y-2">
+                        {newRaid.proposedTimes.map((time, index) => (
+                          <div key={index} className="flex items-center space-x-2">
+                            <input
+                              type="datetime-local"
+                              required
+                              value={time}
+                              onChange={(e) => {
+                                const updated = [...newRaid.proposedTimes];
+                                updated[index] = e.target.value;
                                 setNewRaid({ ...newRaid, proposedTimes: updated });
                               }}
-                              className="text-rose-500 px-2 font-bold"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-                      ))}
+                              style={{ colorScheme: 'dark' }}
+                              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
+                            />
+                            {newRaid.proposedTimes.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = newRaid.proposedTimes.filter((_, i) => i !== index);
+                                  setNewRaid({ ...newRaid, proposedTimes: updated });
+                                }}
+                                className="text-rose-500 px-2 font-bold"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">詳細備註</label>
@@ -1955,7 +2496,7 @@
                   </div>
 
                   <div className="flex space-x-3 pt-3">
-                    <button type="button" onClick={() => setIsCreating(false)} className="flex-1 bg-slate-850 py-2.5 rounded-xl text-slate-300">取消</button>
+                    <button type="button" onClick={() => setIsCreating(false)} className="flex-1 bg-slate-855 py-2.5 rounded-xl text-slate-300">取消</button>
                     <button type="submit" className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 py-2.5 rounded-xl text-white font-bold">確認建立</button>
                   </div>
                 </form>
@@ -1964,31 +2505,77 @@
           )}
 
           {/* ==========================================
-              💡 F. 編輯遠征隊資訊與時間彈出視窗 (管理員專用)
+              F. 編輯遠征隊資訊與時間彈出視窗
              ========================================== */}
           {isEditingRaid && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto font-semibold">
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl relative my-8">
                 <button onClick={() => setIsEditingRaid(false)} className="absolute right-4 top-4 text-slate-400 hover:text-white text-xl">✕</button>
                 <h3 className="text-xl font-extrabold text-amber-400 mb-2">✏️ 編輯遠征隊時間與設定</h3>
-                <p className="text-xs text-slate-400 mb-6">修改本次揪團的王、公告主題、備註、或者新增/刪除候選出團時間。</p>
+                <p className="text-xs text-slate-400 mb-6">修改本次揪團的王、公告主題、小隊組數 or 變更揪團模式。</p>
 
                 <form onSubmit={handleSaveRaidEdit} className="space-y-4 text-sm">
+                  
+                  {/* 模式切換 */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">更換挑戰 Boss</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">揪團模式 (Raid Mode)</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditRaidData({ ...editRaidData, mode: 'datetime' })}
+                        className={`py-2 px-3 rounded-xl border font-bold text-xs ${editRaidData.mode !== 'interest' ? 'bg-indigo-600/20 border-indigo-500 text-white shadow' : 'bg-slate-950 border-slate-855 text-slate-400'}`}
+                      >
+                        📅 指定日期時間
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditRaidData({ ...editRaidData, mode: 'interest' })}
+                        className={`py-2 px-3 rounded-xl border font-bold text-xs ${editRaidData.mode === 'interest' ? 'bg-indigo-600/20 border-indigo-500 text-white shadow' : 'bg-slate-950 border-slate-855 text-slate-400'}`}
+                      >
+                        🙋 收集出團意願
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">挑戰 Boss</label>
                     <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto pr-1">
                       {bosses.map((b) => (
                         <button
                           key={b.id}
                           type="button"
-                          onClick={() => setEditRaidData({ ...editRaidData, bossId: b.id })}
-                          className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition ${editRaidData.bossId === b.id ? 'bg-slate-800 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-850 text-slate-300'}`}
+                          onClick={() => {
+                            const defaultParties = b.maxPlayers > 12 ? 3 : (b.maxPlayers > 6 ? 2 : 1);
+                            setEditRaidData({ ...editRaidData, bossId: b.id, partyCount: defaultParties });
+                          }}
+                          className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition ${editRaidData.bossId === b.id ? 'bg-slate-800 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-855 text-slate-300'}`}
                         >
                           <span className="text-2xl">{b.icon || '👹'}</span>
                           <div className="min-w-0 flex-1">
                             <p className="font-bold text-xs text-white truncate">{b.name.split(' (')[0]}</p>
                             <p className="text-[10px] text-slate-400 truncate">最多{b.maxPlayers}人</p>
                           </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 💡 編輯模式下同樣支持手動切換小隊組數 */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">設定小隊組數 (Party Count)</label>
+                    <div className="flex gap-2">
+                      {[1, 2, 3].map((count) => (
+                        <button
+                          key={count}
+                          type="button"
+                          onClick={() => setEditRaidData({ ...editRaidData, partyCount: count })}
+                          className={`flex-1 py-2 rounded-xl border text-center font-bold text-xs transition-all ${
+                            editRaidData.partyCount === count
+                              ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow'
+                              : 'bg-slate-950 border-slate-855 text-slate-400 hover:border-slate-800'
+                          }`}
+                        >
+                          {count === 1 ? '🔵 一隊' : count === 2 ? '🟢 二隊' : '🟣 三隊'}
                         </button>
                       ))}
                     </div>
@@ -2006,48 +2593,50 @@
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5 flex items-center justify-between">
-                      <span>📅 調整候選出團時間</span>
-                      <button
-                        type="button"
-                        onClick={() => setEditRaidData({ ...editRaidData, proposedTimes: [...editRaidData.proposedTimes, ''] })}
-                        className="text-xs text-indigo-400 hover:underline font-bold"
-                      >
-                        + 新增候選時間
-                      </button>
-                    </label>
-                    <div className="space-y-2">
-                      {editRaidData.proposedTimes.map((time, index) => (
-                        <div key={index} className="flex items-center space-x-2">
-                          <input
-                            type="datetime-local"
-                            required
-                            value={time}
-                            onChange={(e) => {
-                              const updated = [...editRaidData.proposedTimes];
-                              updated[index] = e.target.value;
-                              setEditRaidData({ ...editRaidData, proposedTimes: updated });
-                            }}
-                            style={{ colorScheme: 'dark' }}
-                            className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
-                          />
-                          {editRaidData.proposedTimes.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated = editRaidData.proposedTimes.filter((_, i) => i !== index);
+                  {editRaidData.mode !== 'interest' && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5 flex items-center justify-between">
+                        <span>📅 調整候選出團時間</span>
+                        <button
+                          type="button"
+                          onClick={() => setEditRaidData({ ...editRaidData, proposedTimes: [...editRaidData.proposedTimes, ''] })}
+                          className="text-xs text-indigo-400 hover:underline font-bold"
+                        >
+                          + 新增候選時間
+                        </button>
+                      </label>
+                      <div className="space-y-2">
+                        {editRaidData.proposedTimes.map((time, index) => (
+                          <div key={index} className="flex items-center space-x-2">
+                            <input
+                              type="datetime-local"
+                              required
+                              value={time}
+                              onChange={(e) => {
+                                const updated = [...editRaidData.proposedTimes];
+                                updated[index] = e.target.value;
                                 setEditRaidData({ ...editRaidData, proposedTimes: updated });
                               }}
-                              className="text-rose-500 px-2 font-bold"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-                      ))}
+                              style={{ colorScheme: 'dark' }}
+                              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
+                            />
+                            {editRaidData.proposedTimes.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = editRaidData.proposedTimes.filter((_, i) => i !== index);
+                                  setEditRaidData({ ...editRaidData, proposedTimes: updated });
+                                }}
+                                className="text-rose-500 px-2 font-bold"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">修改詳細備註</label>
@@ -2070,7 +2659,7 @@
           )}
 
           {/* ==========================================
-              B. 個人檔案編輯 (大字體 + 支援多身分角色管理 + 恢復密鑰金鑰備份)
+              B. 個人檔案編輯
              ========================================== */}
           {showProfileModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm overflow-y-auto">
@@ -2081,7 +2670,7 @@
                   <span>⚙️ 設定我的遊戲角色身分卡</span>
                 </h3>
                 <p className="text-sm text-slate-400 mb-4">
-                  您可以在此登錄多個不同的遊戲角色身分（例：3轉或4轉皆可配合）。在右上角下拉選單可以一鍵切換當前出團活躍角色。
+                  您可以在此登錄多個不同的遊戲角色身分。在右上角下拉選單可以一鍵切換當前出團活躍角色。
                 </p>
 
                 {/* 🔑 密鑰帳號還原區 */}
@@ -2100,7 +2689,7 @@
                         textarea.select();
                         document.execCommand('copy');
                         document.body.removeChild(textarea);
-                        showToast("身分密鑰已複製！請妥善保存，重裝瀏覽器或在別的手機貼上即可恢復帳號。");
+                        showToast("身分密鑰已複製！請妥善保存。");
                       }}
                       className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shrink-0 transition"
                     >
@@ -2127,7 +2716,6 @@
 
                 <form onSubmit={saveProfile} className="space-y-6 text-sm">
                   
-                  {/* 多角色動態列表區 */}
                   <div className="space-y-4 max-h-[280px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-800 font-semibold font-bold">
                     {tempCharacters.map((char, index) => (
                       <div key={index} className="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4 relative">
@@ -2141,7 +2729,6 @@
                               className="text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-800 h-5 w-5"
                             />
                             <span className="flex items-center space-x-2">
-                              {/* 💡 身分卡職業微縮徽章 */}
                               {renderJobIcon(char.job, "w-4 h-4")}
                               <span className={`text-sm font-extrabold ${tempActiveIndex === index ? 'text-emerald-400' : 'text-slate-400'}`}>
                                 {tempActiveIndex === index ? '🟢 設為當前出團主身分' : '設為當前出團身分'}
@@ -2166,12 +2753,10 @@
                           )}
                         </div>
 
-                        {/* 輸入欄位 (智慧階段篩選 ⚔️) */}
                         {(() => {
                           const derived = findJobCategoryAndTier(char.job);
                           const currentCategory = derived.category;
                           const currentTier = derived.tier;
-                          // 💡 動態讀取自訂與升級後的職業對照表
                           const catObj = jobCategories[currentCategory] || {};
                           const availableJobs = (catObj && typeof catObj === 'object' && !Array.isArray(catObj))
                             ? (catObj[currentTier] || [])
@@ -2195,7 +2780,6 @@
                                 />
                               </div>
 
-                              {/* 💡 智慧分流：選擇職業大系與階段 */}
                               <div className="md:col-span-2 grid grid-cols-3 gap-2 bg-slate-900/50 p-2.5 rounded-xl border border-slate-800/80">
                                 <div>
                                   <label className="block text-[11px] font-bold text-slate-500 mb-1">1. 大系</label>
@@ -2275,9 +2859,8 @@
                           );
                         })()}
 
-                        {/* 此角色的出團預設備註 */}
                         <div>
-                          <label className="block text-xs font-bold text-slate-400 mb-2">💡 此角色的出團預設備註（錄取後會自動顯示在分組名單中！）</label>
+                          <label className="block text-xs font-bold text-slate-400 mb-2">💡 出團預設備註（錄取後會自動顯示在分組名單中！）</label>
                           <input
                             type="text"
                             value={char.memo || ''}
@@ -2294,7 +2877,6 @@
                     ))}
                   </div>
 
-                  {/* ➕ 新增身分按鈕 */}
                   <button
                     type="button"
                     onClick={() => {
@@ -2309,7 +2891,7 @@
                     <button 
                       type="button" 
                       onClick={() => setShowProfileModal(false)} 
-                      className="flex-1 bg-slate-850 hover:bg-slate-750 py-3 rounded-xl text-sm font-bold text-slate-300"
+                      className="flex-1 bg-slate-855 hover:bg-slate-755 py-3 rounded-xl text-sm font-bold text-slate-300"
                     >
                       取消
                     </button>
@@ -2318,7 +2900,7 @@
                       disabled={isSavingProfile}
                       className="flex-1 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white font-extrabold py-3 rounded-xl text-sm shadow-lg"
                     >
-                      {isSavingProfile ? "⏳ 儲存中，請稍候..." : "確認並儲存變更"}
+                      {isSavingProfile ? "⏳ 儲存中..." : "確認並儲存變更"}
                     </button>
                   </div>
                 </form>
@@ -2327,7 +2909,7 @@
           )}
 
           {/* ==========================================
-              💡 自訂 Boss 管理彈出視窗
+              自訂 Boss 管理彈出視窗
              ========================================== */}
           {showBossManagerModal && isAdminLoggedIn && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm overflow-y-auto font-semibold">
@@ -2337,10 +2919,9 @@
                 <h3 className="text-2xl font-black text-indigo-400 mb-2 flex items-center space-x-2">
                   <span>👾 自訂突襲 Boss 管理工具</span>
                 </h3>
-                <p className="text-xs text-slate-400 mb-6">為伺服器新增全新的突襲 Boss。無須手動輸入 ID，系統將自動隨機配發！</p>
+                <p className="text-xs text-slate-400 mb-6">為伺服器新增全新的突襲 Boss。無須手動輸入 ID，系統將自動配置！</p>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                  {/* 左側：新增自訂 Boss 的表單 */}
                   <form onSubmit={handleCreateCustomBoss} className="space-y-4 text-sm border-r border-slate-800/80 pr-0 lg:pr-6">
                     <h4 className="font-bold text-slate-200 border-b border-slate-800 pb-2 flex items-center space-x-1.5">
                       <span>➕ 新建突襲王</span>
@@ -2359,7 +2940,6 @@
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      {/* Emoji 選擇器 */}
                       <div className="col-span-2">
                         <label className="block text-xs font-bold text-slate-400 mb-2">選擇 Emoji 圖標 ({newBossData.icon})</label>
                         <div className="grid grid-cols-6 gap-1.5 p-2.5 bg-slate-950 border border-slate-855 rounded-xl">
@@ -2389,7 +2969,6 @@
                       </div>
                     </div>
 
-                    {/* 選擇卡片漸層主題色 */}
                     <div>
                       <label className="block text-xs font-bold text-slate-400 mb-2">選擇卡片漸層主題色</label>
                       <div className="grid grid-cols-3 gap-2">
@@ -2425,7 +3004,6 @@
                     </button>
                   </form>
 
-                  {/* 右側：自訂 Boss 列表 */}
                   <div className="space-y-4">
                     <h4 className="font-bold text-slate-200 border-b border-slate-800 pb-2 flex items-center justify-between">
                       <span>🛠️ 目前自訂 Boss 列表</span>
@@ -2463,8 +3041,8 @@
                   </div>
                 </div>
 
-                <div className="flex justify-end space-x-2 border-t border-slate-800 pt-3 mt-6 text-xs">
-                  <button onClick={() => setShowBossManagerModal(false)} className="bg-slate-800 hover:bg-slate-750 px-5 py-2.5 rounded-xl text-slate-300 font-bold transition">關閉面板</button>
+                <div className="flex justify-end space-x-2 border-t border-slate-800 pt-3 mt-6 text-xs font-bold">
+                  <button onClick={() => setShowBossManagerModal(false)} className="bg-slate-800 hover:bg-slate-755 px-5 py-2.5 rounded-xl text-slate-300 font-bold transition">關閉面板</button>
                 </div>
 
               </div>
@@ -2472,7 +3050,7 @@
           )}
 
           {/* ==========================================
-              💡 G. 遠征隊職業管理工具（已全面升級 2轉/3轉/4轉 結構 👑）
+              遠征隊職業管理工具
              ========================================== */}
           {showJobManagerModal && isAdminLoggedIn && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm overflow-y-auto font-semibold font-bold">
@@ -2482,10 +3060,9 @@
                 <h3 className="text-2xl font-black text-teal-400 mb-2 flex items-center space-x-2">
                   <span>⚔️ 遠征隊職業管理工具</span>
                 </h3>
-                <p className="text-xs text-slate-400 mb-6">管理員可在下方的五大類職業中自由新增或刪除各轉職階段（2轉、3轉、4轉）的職業身分名稱。</p>
+                <p className="text-xs text-slate-400 mb-6">管理員可在五大類別中自由新增或刪除各轉職階段的職業身分名稱。</p>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                  {/* ...保留管理端新增職業與分層一覽，未變動... */}
                   <form onSubmit={handleAddJob} className="space-y-4 text-sm border-r border-slate-800/80 pr-0 lg:pr-6">
                     <h4 className="font-bold text-slate-200 border-b border-slate-800 pb-2 flex items-center space-x-1.5">
                       <span>➕ 新增職業身分</span>
@@ -2522,7 +3099,7 @@
                       <input
                         type="text"
                         required
-                        placeholder="例如: 龍騎士, 破風使者"
+                        placeholder="例如: 魂騎士, 破風使者"
                         value={newJobData.name}
                         onChange={(e) => setNewJobData({ ...newJobData, name: e.target.value })}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 focus:outline-none text-slate-100"
@@ -2610,8 +3187,8 @@
                   </div>
                 </div>
 
-                <div className="flex justify-end space-x-2 border-t border-slate-800 pt-3 mt-6 text-xs">
-                  <button onClick={() => setShowJobManagerModal(false)} className="bg-slate-800 hover:bg-slate-750 px-5 py-2.5 rounded-xl text-slate-300 font-bold transition">關閉職業管理</button>
+                <div className="flex justify-end space-x-2 border-t border-slate-800 pt-3 mt-6 text-xs font-bold">
+                  <button onClick={() => setShowJobManagerModal(false)} className="bg-slate-800 hover:bg-slate-755 px-5 py-2.5 rounded-xl text-slate-300 font-bold transition">關閉職業管理</button>
                 </div>
 
               </div>
@@ -2728,7 +3305,6 @@
                                 </button>
                               </div>
 
-                              {/* 🔑 帳號密鑰透明可視區 */}
                               <div className="p-2 bg-slate-900 border border-slate-800 rounded-lg flex items-center justify-between gap-2 text-xs">
                                 <span className="font-mono text-slate-400 select-all truncate">
                                   🔑 帳號密鑰: <span className="text-amber-400 font-bold">{u.userId || u.id}</span>
@@ -2744,7 +3320,7 @@
                                     document.body.removeChild(textarea);
                                     showToast("已成功複製該隊員的帳號密鑰！");
                                   }}
-                                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] px-2.5 py-1 rounded border border-slate-700 transition shrink-0 active:scale-95"
+                                  className="bg-slate-800 hover:bg-slate-755 text-slate-300 text-[10px] px-2.5 py-1 rounded border border-slate-700 transition shrink-0 active:scale-95"
                                 >
                                   複製
                                 </button>
@@ -2774,7 +3350,7 @@
                     <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-855 space-y-3 font-semibold font-bold">
                       <p className="text-xs text-slate-400 leading-relaxed">
                         <span className="font-bold text-amber-500">⚠ 注意事項：</span><br />
-                        如果您不小心更動或貼錯了 Firebase 的 Config 造成網頁連線死當，或之後遠征隊更換了全新的專案資料庫，您可以按下下方按鈕將其抹除。
+                        如果您不小心更動或貼錯了 Firebase 的 Config 造成網頁連線死當，可以按下下方按鈕將其抹除。
                       </p>
                       
                       <button
@@ -2787,24 +3363,14 @@
 
                     <div className="p-3 bg-slate-950/40 border border-slate-850 rounded-xl text-[10px] text-slate-500 leading-relaxed font-bold">
                       <p className="font-bold text-slate-400">💡 遠征隊安全管理提示：</p>
-                      <p className="mt-1">請確認您的 Firebase Firestore Database 安全性規則 (Rules) 為寬鬆測試模式，例如：</p>
-                      <pre className="bg-slate-950 p-2 rounded mt-1 text-slate-400 font-mono text-[9px] overflow-x-auto">
-{`rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
-    }
-  }
-}`}
-                      </pre>
+                      <p className="mt-1">請確認您的 Firebase Firestore Database 安全性規則為寬鬆測試模式。</p>
                     </div>
                   </div>
 
                 </div>
 
                 <div className="flex justify-end space-x-2 border-t border-slate-800 pt-3 mt-4 text-xs font-bold">
-                  <button onClick={() => setShowAdminConsole(false)} className="bg-slate-800 hover:bg-slate-750 px-4 py-2 rounded-xl text-slate-300">關閉後台</button>
+                  <button onClick={() => setShowAdminConsole(false)} className="bg-slate-800 hover:bg-slate-755 px-4 py-2 rounded-xl text-slate-300">關閉後台</button>
                 </div>
 
               </div>
@@ -2826,9 +3392,9 @@ service cloud.firestore {
             </div>
           )}
 
-          {/* 💡 圖 3 支援點：F. 通用隊員詳細角色卡彈出視窗 */}
+          {/* 💡 通用隊員詳細角色卡彈出視窗 */}
           {voterDetailModal.isOpen && voterDetailModal.voter && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fade-in">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative font-semibold font-bold">
                 <button 
                   onClick={() => setVoterDetailModal({ isOpen: false, voter: null })} 
@@ -2869,7 +3435,7 @@ service cloud.firestore {
                 
                 <button 
                   onClick={() => setVoterDetailModal({ isOpen: false, voter: null })} 
-                  className="w-full bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold py-2.5 rounded-xl text-xs transition active:scale-95 select-none"
+                  className="w-full bg-slate-800 hover:bg-slate-755 text-slate-200 font-bold py-2.5 rounded-xl text-xs transition active:scale-95 select-none"
                 >
                   關閉視窗
                 </button>
