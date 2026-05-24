@@ -159,7 +159,8 @@
         clientId: '1508031863263068190', // 預載您的 Client ID
         redirectUri: 'http://127.0.0.1:5500/', // 預載您的本地 Redirect URI
         mode: 'implicit', 
-        apiEndpoint: ''
+        apiEndpoint: '',
+        webhookUrl: '' // 💡 Webhook 廣播通道
       });
       
       // 💡 職業管理核心 state (動態綁定資料庫)
@@ -490,7 +491,8 @@
               clientId: '1508031863263068190',
               redirectUri: 'http://127.0.0.1:5500/',
               mode: 'implicit',
-              apiEndpoint: ''
+              apiEndpoint: '',
+              webhookUrl: ''
             };
             configRef.set(defaultConf).catch(e => console.error(e));
             setDiscordConfig(defaultConf);
@@ -839,6 +841,12 @@
           return;
         }
 
+        // 💡 終極防線：必須登入 Discord 才能儲存角色卡
+        if (!discordUser) {
+          showToast("⚠️ 請先點擊上方按鈕連結 Discord 帳號才能儲存角色卡！", "error");
+          return;
+        }
+
         const hasEmptyIgn = tempCharacters.some(c => !c.ign.trim());
         if (hasEmptyIgn) {
           showToast("所有角色的 遊戲 ID (IGN) 均不可為空！", "error");
@@ -1006,7 +1014,7 @@
         }
       };
 
-      // 💡 管理員刪除單條留言功能
+      // 💡 訊息完全刪除
       const handleDeleteMessage = async (msgId) => {
         if (!db || !currentRaidId || !msgId) return;
         triggerConfirm(
@@ -1386,6 +1394,102 @@
         }
       };
 
+      // 💡 廣播出團公告與自動 @標記 成員至 Discord 伺服器 👑
+      const sendDiscordRaidWebhook = async (raid, actionType, extraData = {}) => {
+        if (!discordConfig || !discordConfig.webhookUrl) {
+          showToast("⚠️ 請先在管理者後台配置 Discord Webhook URL！", "error");
+          return;
+        }
+
+        const raidBoss = bosses.find(b => b.id === raid.bossId);
+        let content = "";
+        let embeds = [];
+
+        if (actionType === 'finalize_time') {
+          const timeIndex = extraData.timeIndex;
+          const timeStr = formatDateTime(raid.proposedTimes[timeIndex]);
+          
+          // 篩選此時段投可以(yes)或也許(maybe)成員並組成 ping 字串
+          const timeVotes = raid.votes || [];
+          const matchedVoters = timeVotes.filter(v => v.votes?.[timeIndex] === 'yes' || v.votes?.[timeIndex] === 'maybe');
+          const pings = matchedVoters
+            .filter(v => v.discord && v.discord.id)
+            .map(v => `<@${v.discord.id}>`)
+            .join(" ");
+
+          content = `🔔 **遠征出團時間已由團長確定！**\n感謝以下隊員的配合與參與：${pings ? pings : '（無 Discord 綁定成員）'}`;
+          embeds = [{
+            title: `⚔️ 【${raidBoss?.name.split(' (')[0]}】出征時間確定`,
+            description: `📌 **主題**：${raid.title}\n📅 **確定時間**：**${timeStr}** 👑\n📝 **備註/戰術要求**：${raid.notes || "無"}`,
+            color: 16750848, // Amber Color
+            footer: { text: "NyxShade 遠征隊組隊系統" },
+            timestamp: new Date().toISOString()
+          }];
+        } else if (actionType === 'post_roster') {
+          const participants = raid.participants || [];
+          const party1 = participants.filter(p => p.party === '1');
+          const party2 = participants.filter(p => p.party === '2');
+          const party3 = participants.filter(p => p.party === '3');
+          const reserves = participants.filter(p => p.party === 'reserve' || !p.party);
+          const partyCount = raid.partyCount || 1;
+
+          // 錄取名單中所有綁定 Discord 的成員進行 ping
+          const enrolledPings = participants
+            .filter(p => p.discord && p.discord.id)
+            .map(p => `<@${p.discord.id}>`)
+            .join(" ");
+
+          content = `📋 **遠征隊最新排班名單公佈！**\n請被錄取的隊員準時出席：${enrolledPings ? enrolledPings : '（無 Discord 綁定成員）'}`;
+
+          let fields = [];
+          const formatPartyField = (list, name) => {
+            if (list.length === 0) return { name, value: "*（空位待分配）*", inline: true };
+            const val = list.map((p, idx) => `${idx + 1}. [${p.job}] **${p.ign}** (Lv.${p.level})${p.memo ? ` - *${p.memo}*` : ''}`).join("\n");
+            return { name, value: val, inline: true };
+          };
+
+          fields.push(formatPartyField(party1, "🔵 遠征一隊"));
+          if (partyCount >= 2) fields.push(formatPartyField(party2, "🟢 遠征二隊"));
+          if (partyCount >= 3) fields.push(formatPartyField(party3, "🟣 遠征三隊"));
+          if (reserves.length > 0) {
+            const resVal = reserves.map(p => `- [${p.job}] **${p.ign}** (Lv.${p.level})${p.memo ? ` - *${p.memo}*` : ''}`).join("\n");
+            fields.push({ name: "🔸 候補與預備名單", value: resVal, inline: false });
+          }
+
+          let bestTimeText = "待定";
+          if (raid.mode === 'interest') {
+            bestTimeText = "意願調查模式 💬";
+          } else if (typeof raid.finalTimeIndex === 'number' && raid.proposedTimes?.[raid.finalTimeIndex]) {
+            bestTimeText = formatDateTime(raid.proposedTimes[raid.finalTimeIndex]) + " 👑";
+          }
+
+          embeds = [{
+            title: `⚔️ 【${raidBoss?.name.split(' (')[0]}】出征編組排班名冊`,
+            description: `📌 **揪團主題**：${raid.title}\n📅 **預定時間**：**${bestTimeText}**`,
+            fields: fields,
+            color: 5793266, // Discord Blurple Color
+            footer: { text: "NyxShade 遠征隊組隊系統" },
+            timestamp: new Date().toISOString()
+          }];
+        }
+
+        try {
+          const response = await fetch(discordConfig.webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content, embeds })
+          });
+          if (response.ok) {
+            showToast("📢 成功廣播公告與 @標記 成員至 Discord 頻道！");
+          } else {
+            throw new Error("Discord API Webhook 發送失敗");
+          }
+        } catch (err) {
+          console.error(err);
+          showToast("發送 Discord 失敗，請確認 Webhook URL 網址是否正確！", "error");
+        }
+      };
+
       // 複製排班表格式
       const copyGroupFormat = (raid) => {
         const raidBoss = bosses.find(b => b.id === raid.bossId);
@@ -1474,7 +1578,7 @@
       const customBossesList = bosses.filter(b => b.isCustom || !DEFAULT_BOSS_LIST.some(d => d.id === b.id));
 
       return (
-        <div className="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col justify-between">
+        <div className="bg-slate-955 text-slate-100 min-h-screen font-sans flex flex-col justify-between">
           
           <div>
             {/* 頂部導航列 (已優化為高精度護眼完美對齊比例 🌟) */}
@@ -1807,12 +1911,22 @@
                           >
                             📋 複製公告排班表
                           </button>
+
+                          {/* 💡 團長一鍵廣播完整分組名單至 Discord 👑 */}
+                          {isCreator && discordConfig?.webhookUrl && (
+                            <button
+                              onClick={() => sendDiscordRaidWebhook(activeRaid, 'post_roster')}
+                              className="bg-[#5865F2] hover:bg-[#4752C4] text-white font-extrabold px-4 py-2.5 rounded-xl transition text-xs md:text-sm shadow-sm flex items-center space-x-1.5"
+                            >
+                              <span>📢 廣播名單至 DC</span>
+                            </button>
+                          )}
                           
                           {isCreator && (
                             <>
                               <button
                                 onClick={startEditingRaid}
-                                className="bg-amber-650 hover:bg-amber-750 text-white font-bold px-4 py-2.5 rounded-xl transition text-xs md:text-sm shadow-sm"
+                                className="bg-amber-655 hover:bg-amber-750 text-white font-bold px-4 py-2.5 rounded-xl transition text-xs md:text-sm shadow-sm"
                               >
                                 ✏️ 編輯此團
                               </button>
@@ -1896,7 +2010,7 @@
                                           e.stopPropagation();
                                           setVoterDetailModal({ isOpen: true, voter });
                                         }}
-                                        className="text-[10px] bg-slate-900 hover:bg-slate-850 hover:border-slate-700 border border-slate-800 px-2 py-1 rounded text-amber-300 transition shrink-0 flex items-center space-x-1 font-bold active:scale-95"
+                                        className="text-[10px] bg-slate-900 hover:bg-slate-855 hover:border-slate-700 border border-slate-800 px-2 py-1 rounded text-amber-300 transition shrink-0 flex items-center space-x-1 font-bold active:scale-95"
                                       >
                                         <span>💬 詳細</span>
                                       </button>
@@ -1926,7 +2040,7 @@
                                             e.stopPropagation();
                                             handleRemoveVote(activeRaid.id, voter.userId, voter.ign, voter.job);
                                           }}
-                                          className="bg-rose-950/60 hover:bg-rose-900 border border-rose-900 text-rose-300 font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
+                                          className="bg-rose-955/60 hover:bg-rose-900 border border-rose-900 text-rose-300 font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
                                         >
                                           🗑️ 剃除
                                         </button>
@@ -2038,7 +2152,7 @@
                                             e.stopPropagation();
                                             setVoterDetailModal({ isOpen: true, voter });
                                           }}
-                                          className="text-[10px] bg-slate-900 hover:bg-slate-850 hover:border-slate-700 border border-slate-800 px-2 py-1 rounded text-amber-300 transition shrink-0 flex items-center space-x-1 font-bold active:scale-95"
+                                          className="text-[10px] bg-slate-900 hover:bg-slate-855 hover:border-slate-700 border border-slate-800 px-2 py-1 rounded text-amber-300 transition shrink-0 flex items-center space-x-1 font-bold active:scale-95"
                                         >
                                           <span>💬 詳細</span>
                                         </button>
@@ -2120,13 +2234,27 @@
                                   </button>
 
                                   {isCreator && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleFinalizeTime(activeRaid.id, idx)}
-                                      className={`ml-2 px-3.5 py-2 rounded-xl text-xs font-black transition ${isFinalized ? 'bg-slate-900 border border-amber-500/40 text-amber-400 hover:bg-slate-850' : 'bg-amber-400 text-slate-950 hover:bg-amber-300'}`}
-                                    >
-                                      {isFinalized ? '❌ 取消確定' : '🎯 確定此時間'}
-                                    </button>
+                                    <div className="flex items-center space-x-1 ml-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleFinalizeTime(activeRaid.id, idx)}
+                                        className={`px-3.5 py-2 rounded-xl text-xs font-black transition ${isFinalized ? 'bg-slate-900 border border-amber-500/40 text-amber-400 hover:bg-slate-850' : 'bg-amber-400 text-slate-950 hover:bg-amber-300'}`}
+                                      >
+                                        {isFinalized ? '❌ 取消確定' : '🎯 確定此時間'}
+                                      </button>
+                                      
+                                      {/* 💡 團長一鍵將確定時間公告廣播與自動標記至 Discord 👑 */}
+                                      {isFinalized && discordConfig?.webhookUrl && (
+                                        <button
+                                          type="button"
+                                          onClick={() => sendDiscordRaidWebhook(activeRaid, 'finalize_time', { timeIndex: idx })}
+                                          className="bg-[#5865F2] hover:bg-[#4752C4] text-white px-3.5 py-2 rounded-xl text-xs font-black transition flex items-center space-x-1"
+                                          title="發送出團時間確定公告，並 @標記 可以配合的成員"
+                                        >
+                                          <span>📢 廣播時間</span>
+                                        </button>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               </div>
@@ -2212,7 +2340,7 @@
                                 return (
                                   <div 
                                     key={p.userId + '-' + p.ign + '-' + p.job} 
-                                    className="bg-slate-950/50 hover:bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col gap-3 transition shadow-sm hover:border-slate-755"
+                                    className="bg-slate-955/50 hover:bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col gap-3 transition shadow-sm hover:border-slate-755"
                                   >
                                     <div className="flex flex-col gap-2 min-w-0">
                                       <div className="flex items-start justify-between min-w-0 gap-2">
@@ -2936,7 +3064,7 @@
                       </button>
                     </div>
                   ) : (
-                    <div className="p-6 bg-slate-950 border border-slate-850 rounded-2xl text-center space-y-4">
+                    <div className="p-6 bg-slate-950 border border-slate-855 rounded-2xl text-center space-y-4">
                       <div className="flex items-center justify-center space-x-2">
                         <svg className="w-6 h-6 fill-[#5865F2]" viewBox="0 0 127.14 96.36">
                           <path d="M107.7,8.07A105.15,105.15,0,0,0,77.26,0a77.19,77.19,0,0,0-3.3,6.83A96.67,96.67,0,0,0,53.22,6.83,77.19,77.19,0,0,0,49.88,0,105.15,105.15,0,0,0,19.44,8.07C3.66,31.58-1.86,54.65,1,77.53A105.73,105.73,0,0,0,32,96.36a77.7,77.7,0,0,0,6.63-10.85,68.43,68.43,0,0,1-10.5-5c.9-.65,1.76-1.34,2.58-2a75.59,75.59,0,0,0,73,0c.83.68,1.69,1.37,2.58,2a68.43,68.43,0,0,1-10.5,5,77.7,77.7,0,0,0,6.63,10.85,105.73,105.73,0,0,0,31.06-18.83C129.87,48.24,123.7,25.41,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53S36.18,40.36,42.45,40.36,53.83,46,53.83,53,48.72,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.24,60,73.24,53S78.41,40.36,84.69,40.36,96.07,46,96.07,53,91,65.69,84.69,65.69Z"/>
@@ -2950,7 +3078,7 @@
                         {discordConfig?.clientId ? (
                           <a
                             href={getDiscordLoginUrl()}
-                            className="inline-flex items-center justify-center space-x-2.5 bg-[#5865F2] hover:bg-[#4752C4] text-white font-extrabold px-6 py-3 rounded-xl transition shadow-lg transform active:scale-95 text-sm w-full sm:w-auto"
+                            className="inline-flex items-center justify-center space-x-2.5 bg-[#5865F2] hover:bg-[#4752C4] text-white font-extrabold px-6 py-3 rounded-xl transition shadow-lg transform active:scale-95 text-sm w-full sm:w-auto animate-pulse"
                           >
                             <span>⚡ 連結 Discord 帳號</span>
                           </a>
@@ -2964,10 +3092,20 @@
                   )}
                 </div>
 
-                {/* 角色表單區 */}
-                <form onSubmit={saveProfile} className="space-y-6 text-sm">
-                  
-                  <div className="space-y-4 max-h-[320px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-800 font-semibold font-bold">
+                {/* 角色表單區 - 💡 如果沒有登入 DC，則鎖定本區並提示 */}
+                <div className="relative">
+                  {!discordUser && (
+                    <div className="absolute inset-0 z-10 bg-slate-900/80 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center text-center p-6 border border-slate-800">
+                      <span className="text-4xl mb-3">🔒</span>
+                      <h4 className="text-base font-black text-amber-400">出團角色卡已鎖定</h4>
+                      <p className="text-xs text-slate-400 max-w-sm mt-2 leading-relaxed">
+                        系統目前已啟用 Discord 強制安全綁定。<br />
+                        請先點擊上方按鈕完成 <strong className="text-indigo-400">Discord 連結認證</strong> 即可解鎖建立、編輯與儲存角色卡！
+                      </p>
+                    </div>
+                  )}
+
+                  <div className={`space-y-4 max-h-[320px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-800 font-semibold font-bold transition-all duration-300 ${!discordUser ? 'blur-sm pointer-events-none opacity-40 select-none' : ''}`}>
                     {tempCharacters.map((char, index) => (
                       <div key={index} className="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4 relative">
                         <div className="flex items-center justify-between">
@@ -3019,7 +3157,7 @@
                                 <label className="block text-xs font-bold text-slate-400 mb-2">遊戲 ID (IGN)</label>
                                 <input
                                   type="text"
-                                  required
+                                  required={!!discordUser}
                                   value={char.ign}
                                   onChange={(e) => {
                                     const updated = [...tempCharacters];
@@ -3094,7 +3232,7 @@
                                 <label className="block text-xs font-bold text-slate-400 mb-2">等級 (Lv.)</label>
                                 <input
                                   type="number"
-                                  required
+                                  required={!!discordUser}
                                   min={1}
                                   max={200}
                                   value={char.level}
@@ -3128,33 +3266,40 @@
                     ))}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTempCharacters([...tempCharacters, { ign: '', job: '主教', level: 120, memo: '' }]);
-                    }}
-                    className="w-full bg-slate-955 hover:bg-slate-900 text-indigo-400 font-bold py-3 rounded-2xl text-sm transition border border-dashed border-slate-800 flex items-center justify-center space-x-2"
-                  >
-                    <span>➕ 新增另一個遊戲身分角色卡</span>
-                  </button>
-
-                  <div className="flex space-x-4 pt-4 border-t border-slate-800">
-                    <button 
-                      type="button" 
-                      onClick={() => setShowProfileModal(false)} 
-                      className="flex-1 bg-slate-855 hover:bg-slate-755 py-3 rounded-xl text-sm font-bold text-slate-300"
+                  {discordUser && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTempCharacters([...tempCharacters, { ign: '', job: '主教', level: 120, memo: '' }]);
+                      }}
+                      className="w-full bg-slate-955 hover:bg-slate-900 text-indigo-400 font-bold py-3 rounded-2xl text-sm transition border border-dashed border-slate-800 flex items-center justify-center space-x-2 mt-4"
                     >
-                      取消
+                      <span>➕ 新增另一個遊戲身分角色卡</span>
                     </button>
+                  )}
+                </div>
+
+                {/* 底部按鈕區 */}
+                <div className="flex space-x-4 pt-4 border-t border-slate-800 mt-6">
+                  <button 
+                    type="button" 
+                    onClick={() => setShowProfileModal(false)} 
+                    className="flex-1 bg-slate-855 hover:bg-slate-755 py-3 rounded-xl text-sm font-bold text-slate-300"
+                  >
+                    取消
+                  </button>
+                  {discordUser && (
                     <button 
                       type="submit" 
+                      onClick={saveProfile}
                       disabled={isSavingProfile}
-                      className="flex-1 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white font-extrabold py-3 rounded-xl text-sm shadow-lg"
+                      className="flex-1 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white font-extrabold py-3 rounded-xl text-sm shadow-lg transition active:scale-95"
                     >
                       {isSavingProfile ? "⏳ 儲存中..." : "確認並儲存變更"}
                     </button>
-                  </div>
-                </form>
+                  )}
+                </div>
+
               </div>
             </div>
           )}
@@ -3595,7 +3740,7 @@
                     </div>
                   </div>
 
-                  {/* 🛡️ 右側欄位：資料庫維護 ＋ Discord OAuth2 系統設定 👑 */}
+                  {/* 🛡️ 右側欄位：資料庫維護 ＋ Discord OAuth2 與 Webhook 系統設定 👑 */}
                   <div className="space-y-6">
                     <div className="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4 font-semibold">
                       <h4 className="font-extrabold text-sm text-indigo-400 flex items-center gap-1.5">
@@ -3669,12 +3814,24 @@
                           </div>
                         )}
 
+                        {/* 💡 Webhook 整合設定區塊 👑 */}
+                        <div className="border-t border-slate-800/80 pt-3 mt-3">
+                          <label className="block text-amber-400 mb-1 font-black">Discord Webhook URL (發送廣播與 @標記)</label>
+                          <input
+                            type="text"
+                            placeholder="在此貼上您 Discord 頻道的 Webhook 網址"
+                            value={discordConfig?.webhookUrl || ''}
+                            onChange={(e) => setDiscordConfig({ ...discordConfig, webhookUrl: e.target.value })}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none font-mono"
+                          />
+                        </div>
+
                         <div className="bg-slate-900/60 p-2.5 rounded border border-slate-800 text-[10px] text-slate-500 leading-relaxed">
                           <strong className="text-amber-500">📌 設定步驟指南：</strong>
                           <ol className="list-decimal pl-3.5 space-y-0.5 mt-1">
                             <li>前往 Discord Developer Portal 建立專案。</li>
-                            <li>在 OAuth2 General 頁面的 Redirects 加入：<code className="text-indigo-400 font-mono text-[9px] block bg-black/40 px-1 py-0.5 rounded truncate select-all mt-0.5">{discordConfig?.redirectUri || window.location.origin + window.location.pathname}</code></li>
-                            <li>將 Scopes 勾選 <code className="text-emerald-400 font-mono">identify</code>，在 Authorization Method 選擇 <code className="text-amber-450">In-app Authorization</code> 或直接儲存。</li>
+                            <li>在 OAuth2 General 頁面的 Redirects 加入上面的導向網址。</li>
+                            <li>至 Discord 伺服器頻道設定 ➜ 整合 ➜ 建立 Webhook，複製網址並填在上方。</li>
                           </ol>
                         </div>
 
