@@ -198,7 +198,7 @@
       const [chatMessages, setChatMessages] = useState([]);
       const [chatInput, setChatInput] = useState('');
       const [isChatOpen, setIsChatOpen] = useState(false); // 控制浮動聊天室是否開啟的 state
-      const [isChatMaximized, setIsChatMaximized] = useState(false); // 💡 新增：控制聊天視窗是否放大至全螢幕的 state
+      const [isChatMaximized, setIsChatMaximized] = useState(false); // 控制聊天視窗是否放大至全螢幕的 state
       const chatContainerRef = useRef(null); // 精準控管討論區內滾動
 
       // 💡 DC 未讀時間段智慧追蹤
@@ -862,6 +862,37 @@
         }
       };
 
+      // 💡 訊息自主收回功能（新增部分 🌟）
+      const handleRecallMessage = async (msgId) => {
+        if (!db || !currentRaidId || !msgId) return;
+        try {
+          await db.doc(`artifacts/${appId}/public/data/raid_messages_${currentRaidId}/${msgId}`).update({
+            recalled: true,
+            text: "此訊息已收回"
+          });
+          showToast("訊息已成功收回！");
+        } catch (err) {
+          showToast(`收回失敗: ${err.message}`, "error");
+        }
+      };
+
+      // 💡 管理員刪除單條留言功能（新增部分 🌟）
+      const handleDeleteMessage = async (msgId) => {
+        if (!db || !currentRaidId || !msgId) return;
+        triggerConfirm(
+          "確定要完全刪除此留言嗎？",
+          "此操作將自伺服器永久抹除該留言，其他隊員將完全無法看見。",
+          async () => {
+            try {
+              await db.doc(`artifacts/${appId}/public/data/raid_messages_${currentRaidId}/${msgId}`).delete();
+              showToast("該訊息已被完全刪除！");
+            } catch (err) {
+              showToast(`刪除失敗: ${err.message}`, "error");
+            }
+          }
+        );
+      };
+
       // 💡 管理員新增自訂 Boss
       const handleCreateCustomBoss = async (e) => {
         e.preventDefault();
@@ -1052,17 +1083,17 @@
       // 重置團名單
       const handleResetRaid = (raidId) => {
         triggerConfirm(
-          "確定要重置此團名單嗎？",
-          "這會清空所有的報名、小隊編組與投票，但保留本團的標題、討論紀錄與基本設定。",
+          "確定要重置此團出團名單嗎？",
+          "這會清空所有的報名小隊、編組分配與投票，但會保留本團的討論紀錄、備註與主題設定。",
           async () => {
             try {
               await db.doc(`artifacts/${appId}/public/data/raids/${raidId}`).update({
                 participants: [],
                 votes: []
               });
-              showToast("已重置名單，大家可以開始重新報名囉！");
+              showToast("出團排班名單與投票已全部歸零！");
             } catch (err) {
-              showToast("重置失敗", "error");
+              showToast("重置名單失敗", "error");
             }
           }
         );
@@ -1588,393 +1619,387 @@
                   )}
                 </div>
               ) : (
-                /* 2. 遠征隊詳細主控台 */
-                <div>
-                  <button 
-                    onClick={() => setCurrentRaidId(null)}
-                    className="mb-5 flex items-center space-x-1.5 text-sm md:text-base text-slate-400 hover:text-white transition font-bold"
-                  >
-                    <span>⬅ 返回大廳列表</span>
-                  </button>
+                /* 2. 遠征隊詳細主控台（💡 已重構為無側邊欄高寬幅大器單欄排版） */
+                <div className="space-y-6 max-w-4xl mx-auto">
+                  
+                  {/* 主資訊卡片 */}
+                  <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl space-y-4">
+                    <div className={`p-8 bg-gradient-to-r ${boss?.color || 'from-slate-700 to-black'} text-white relative`}>
+                      <div className="absolute right-6 top-6 opacity-20 text-7xl">{boss?.icon || '👹'}</div>
+                      <span className="bg-black/30 text-white font-bold text-xs px-3 py-1 rounded-full uppercase tracking-wider backdrop-blur">
+                        {activeRaid.mode === 'interest' ? '🙋 意願收集團' : '📅 指定日期團'}
+                      </span>
+                      <h2 className="text-2xl md:text-3xl font-black mt-4">{activeRaid.title}</h2>
+                      <p className="text-white/90 text-sm md:text-base mt-2">{boss?.name || '未知 Boss'} • 團隊上限最多 {boss?.maxPlayers || 18} 人</p>
+                    </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* 左欄 (2/3)：基本資訊與「日期投票」/「意願收集」 */}
-                    <div className="lg:col-span-2 space-y-6">
-                      <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-                        <div className={`p-8 bg-gradient-to-r ${boss?.color || 'from-slate-700 to-black'} text-white relative`}>
-                          <div className="absolute right-6 top-6 opacity-20 text-7xl">{boss?.icon || '👹'}</div>
-                          <span className="bg-black/30 text-white font-bold text-xs px-3 py-1 rounded-full uppercase tracking-wider backdrop-blur">
-                            {activeRaid.mode === 'interest' ? '🙋 意願收集團' : '📅 指定日期團'}
-                          </span>
-                          <h2 className="text-2xl md:text-3xl font-black mt-4">{activeRaid.title}</h2>
-                          <p className="text-white/90 text-sm md:text-base mt-2">{boss?.name || '未知 Boss'} • 團隊上限最多 {boss?.maxPlayers || 18} 人</p>
-                        </div>
-
-                        <div className="p-6 space-y-4">
+                    <div className="p-6 space-y-5">
+                      {/* 💡 智慧整合：管理者登入後顯示高質感排班導引提示框 */}
+                      {isAdminLoggedIn && (
+                        <div className="bg-amber-500/10 border border-amber-550/20 text-amber-300 rounded-2xl p-4 text-xs font-semibold leading-relaxed flex items-start gap-2.5">
+                          <span className="text-sm">👑</span>
                           <div>
-                            <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">隊伍備註 / 戰術要求</h4>
-                            <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800 text-sm md:text-base text-slate-300 leading-relaxed whitespace-pre-wrap">
-                              {activeRaid.notes || "團長沒有提供詳細備註。"}
-                            </div>
+                            <strong className="text-amber-200">團長排班提示：</strong>
+                            請利用下方各隊名單中卡片底部的分組按鈕，直接將人員錄取、歸類 or 移出，變更將會即時同步！
                           </div>
+                        </div>
+                      )}
 
-                          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 text-sm text-slate-400 border-t border-slate-855">
-                            <div>
-                              發起人：<strong className="text-slate-200">{activeRaid.creatorIgn}</strong>
-                            </div>
-                            <div className="flex space-x-2">
-                              <button
-                                onClick={() => copyGroupFormat(activeRaid)}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl transition text-xs md:text-sm shadow-sm"
-                              >
-                                📋 複製公告排班表
-                              </button>
-                              
-                              {isCreator && (
-                                <>
-                                  <button
-                                    onClick={startEditingRaid}
-                                    className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2 rounded-xl transition text-xs md:text-sm shadow-sm"
-                                  >
-                                    ✏️ 編輯此團
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteRaid(activeRaid.id)}
-                                    className="bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900 text-rose-300 px-4 py-2 rounded-xl transition text-xs md:text-sm"
-                                  >
-                                    🗑️ 刪除此團
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">隊伍備註 / 戰術要求</h4>
+                        <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800 text-sm md:text-base text-slate-300 leading-relaxed whitespace-pre-wrap">
+                          {activeRaid.notes || "團長沒有提供詳細備註。"}
                         </div>
                       </div>
 
-                      {/* 💡 根據 Raid 模式，智慧載入對應的意願或日期投票面板 */}
-                      {activeRaid.mode === 'interest' ? (
-                        /* 意願調查模式（只有可以與不行兩個選項） */
-                        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
-                          <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-4">
-                            <div>
-                              <h3 className="text-lg md:text-xl font-extrabold text-white">🙋 參與此突襲王意願調查</h3>
-                              <p className="text-xs md:text-sm text-slate-400 mt-1">
-                                本團為意願模式。請表達您是否有意願打這個突襲王？
-                                <span className="text-amber-400 font-bold">（再次點擊已選選項可「智慧反選」取消，自動同步備註）</span>
-                              </p>
-                            </div>
-                          </div>
+                      {/* 💡 排班工具一體化整合（圖3底部整合操作欄 🌟） */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 text-sm text-slate-400 border-t border-slate-855">
+                        <div>
+                          發起人：<strong className="text-slate-200">{activeRaid.creatorIgn}</strong>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => copyGroupFormat(activeRaid)}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2.5 rounded-xl transition text-xs md:text-sm shadow-sm"
+                          >
+                            📋 複製公告排班表
+                          </button>
+                          
+                          {isCreator && (
+                            <>
+                              <button
+                                onClick={startEditingRaid}
+                                className="bg-amber-650 hover:bg-amber-750 text-white font-bold px-4 py-2.5 rounded-xl transition text-xs md:text-sm shadow-sm"
+                              >
+                                ✏️ 編輯此團
+                              </button>
+                              
+                              {/* 💡 原圖2「一鍵清空出團名單與投票」完美收納至此 */}
+                              <button
+                                onClick={() => handleResetRaid(activeRaid.id)}
+                                className="bg-slate-800 hover:bg-slate-700 border border-amber-500/30 text-amber-400 font-bold px-4 py-2.5 rounded-xl transition text-xs md:text-sm shadow-sm"
+                              >
+                                🔄 重置名單
+                              </button>
 
-                          {(() => {
-                            const interestVotes = activeRaid.votes || [];
-                            const yesVotes = interestVotes.filter(v => v.votes?.['interest'] === 'yes') || [];
-                            const noVotes = interestVotes.filter(v => v.votes?.['interest'] === 'no') || [];
+                              <button
+                                onClick={() => handleDeleteRaid(activeRaid.id)}
+                                className="bg-rose-955/40 hover:bg-rose-900/60 border border-rose-900 text-rose-300 px-4 py-2.5 rounded-xl transition text-xs md:text-sm"
+                              >
+                                🗑️ 刪除此團
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-                            const myVoteRecord = interestVotes.find(v => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job);
-                            const myChoice = myVoteRecord?.votes?.['interest'] || null;
+                  {/* 💡 意願調查或日期投票面板 */}
+                  {activeRaid.mode === 'interest' ? (
+                    /* 意願調查模式（只有可以與不行兩個選項） */
+                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+                      <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-4">
+                        <div>
+                          <h3 className="text-lg md:text-xl font-extrabold text-white">🙋 參與此突襲王意願調查</h3>
+                          <p className="text-xs md:text-sm text-slate-400 mt-1">
+                            本團為意願模式。請表達您是否有意願打這個突襲王？
+                            <span className="text-amber-400 font-bold">（再次點擊已選選項可「智慧反選」取消，自動同步備註）</span>
+                          </p>
+                        </div>
+                      </div>
 
-                            const renderVoterBadges = (votersList, emoji) => {
-                              if (votersList.length === 0) return null;
-                              return (
-                                <div className="flex flex-wrap gap-2.5 mt-2">
-                                  {votersList.map((voter, vIdx) => {
-                                    const alreadyInRaid = activeRaid.participants?.some(p => p.userId === voter.userId && p.ign === voter.ign && p.job === voter.job);
-                                    return (
-                                      <div 
-                                        key={voter.userId + '-' + voter.ign + '-' + voter.job + '-' + vIdx}
-                                        className="inline-flex items-center space-x-2 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl text-sm transition hover:border-slate-755 max-w-full"
+                      {(() => {
+                        const interestVotes = activeRaid.votes || [];
+                        const yesVotes = interestVotes.filter(v => v.votes?.['interest'] === 'yes') || [];
+                        const noVotes = interestVotes.filter(v => v.votes?.['interest'] === 'no') || [];
+
+                        const myVoteRecord = interestVotes.find(v => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job);
+                        const myChoice = myVoteRecord?.votes?.['interest'] || null;
+
+                        const renderVoterBadges = (votersList, emoji) => {
+                          if (votersList.length === 0) return null;
+                          return (
+                            <div className="flex flex-wrap gap-2.5 mt-2">
+                              {votersList.map((voter, vIdx) => {
+                                const alreadyInRaid = activeRaid.participants?.some(p => p.userId === voter.userId && p.ign === voter.ign && p.job === voter.job);
+                                return (
+                                  <div 
+                                    key={voter.userId + '-' + voter.ign + '-' + voter.job + '-' + vIdx}
+                                    className="inline-flex items-center space-x-2 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl text-sm transition hover:border-slate-755 max-w-full"
+                                  >
+                                    <span className="text-base shrink-0">{emoji}</span>
+                                    <span className="font-extrabold text-slate-100 whitespace-nowrap" title={voter.ign}>{voter.ign}</span>
+                                    
+                                    <span className="text-[11px] text-slate-400 font-bold shrink-0 flex items-center space-x-1 bg-slate-900 border border-slate-800/80 px-2 py-0.5 rounded-lg select-none">
+                                      {voter.job && renderJobIcon(voter.job, "w-3.5 h-3.5")}
+                                      <span className="text-slate-300 font-extrabold">{voter.job || '無職業'}</span>
+                                      <span className="text-slate-500">•</span>
+                                      <span className="text-white font-mono font-bold">Lv.{voter.level || '?'}</span>
+                                    </span>
+
+                                    {voter.memo && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setVoterDetailModal({ isOpen: true, voter });
+                                        }}
+                                        className="text-[10px] bg-slate-900 hover:bg-slate-850 hover:border-slate-700 border border-slate-800 px-2 py-1 rounded text-amber-300 transition shrink-0 flex items-center space-x-1 font-bold active:scale-95"
                                       >
-                                        <span className="text-base shrink-0">{emoji}</span>
-                                        <span className="font-extrabold text-slate-100 whitespace-nowrap" title={voter.ign}>{voter.ign}</span>
-                                        
-                                        <span className="text-[11px] text-slate-400 font-bold shrink-0 flex items-center space-x-1 bg-slate-900 border border-slate-800/80 px-2 py-0.5 rounded-lg select-none">
-                                          {voter.job && renderJobIcon(voter.job, "w-3.5 h-3.5")}
-                                          <span className="text-slate-300 font-extrabold">{voter.job || '無職業'}</span>
-                                          <span className="text-slate-500">•</span>
-                                          <span className="text-white font-mono font-bold">Lv.{voter.level || '?'}</span>
-                                        </span>
-
-                                        {voter.memo && (
+                                        <span>💬 詳細</span>
+                                      </button>
+                                    )}
+                                    
+                                    {isCreator && (
+                                      <div className="flex items-center space-x-1.5 ml-2 border-l border-slate-800/85 pl-2">
+                                        {alreadyInRaid ? (
+                                          <span className="text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded text-xs shrink-0 select-none">
+                                            已錄取
+                                          </span>
+                                        ) : (
                                           <button
                                             type="button"
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              setVoterDetailModal({ isOpen: true, voter });
+                                              handleQuickEnroll(activeRaid.id, voter);
                                             }}
-                                            className="text-[10px] bg-slate-900 hover:bg-slate-850 hover:border-slate-700 border border-slate-800 px-2 py-1 rounded text-amber-300 transition shrink-0 flex items-center space-x-1 font-bold active:scale-95"
+                                            className="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
                                           >
-                                            <span>💬 詳細</span>
+                                            ➕ 錄取
                                           </button>
                                         )}
-                                        
-                                        {isCreator && (
-                                          <div className="flex items-center space-x-1.5 ml-2 border-l border-slate-800/85 pl-2">
-                                            {alreadyInRaid ? (
-                                              <span className="text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded text-xs shrink-0 select-none">
-                                                已錄取
-                                              </span>
-                                            ) : (
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  handleQuickEnroll(activeRaid.id, voter);
-                                                }}
-                                                className="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
-                                              >
-                                                ➕ 錄取
-                                              </button>
-                                            )}
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleRemoveVote(activeRaid.id, voter.userId, voter.ign, voter.job);
-                                              }}
-                                              className="bg-rose-950/60 hover:bg-rose-900 border border-rose-900 text-rose-300 font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
-                                            >
-                                              🗑️ 剃除
-                                            </button>
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            };
-
-                            return (
-                              <div className="p-5 rounded-2xl border bg-slate-950/40 border-slate-800 flex flex-col gap-5">
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                  <div>
-                                    {/* 💡 文字優化：根據突襲王種類動態改寫 */}
-                                    <h4 className="text-base font-bold text-slate-200">
-                                      您本週是否有意願參加【{boss?.name.split(' (')[0] || '此突襲王'}】突襲團？
-                                    </h4>
-                                    <p className="text-xs text-slate-500 mt-1">請利用下方按鈕登載意願</p>
-                                  </div>
-                                  <div className="flex items-center space-x-3">
-                                    <button
-                                      onClick={() => handleVoteTime(activeRaid.id, 'interest', 'yes')}
-                                      className={`px-6 py-3 rounded-xl text-sm font-black transition flex items-center gap-1.5 active:scale-95 ${myChoice === 'yes' ? 'bg-emerald-600 text-white shadow shadow-emerald-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
-                                    >
-                                      <span>🟢 可以配合</span>
-                                    </button>
-                                    <button
-                                      onClick={() => handleVoteTime(activeRaid.id, 'interest', 'no')}
-                                      className={`px-6 py-3 rounded-xl text-sm font-black transition flex items-center gap-1.5 active:scale-95 ${myChoice === 'no' ? 'bg-rose-600 text-white shadow shadow-rose-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
-                                    >
-                                      <span>🔴 不行參戰</span>
-                                    </button>
-                                  </div>
-                                </div>
-
-                                <div className="border-t border-slate-800/85 pt-4 space-y-3">
-                                  <div>
-                                    <span className="text-xs text-emerald-400 font-bold block mb-1">🟢 可以配合的隊員 ({yesVotes.length} 人)：</span>
-                                    {yesVotes.length > 0 ? renderVoterBadges(yesVotes, '🟢') : <span className="text-slate-600 text-xs italic block py-1">目前尚無人表達有意願</span>}
-                                  </div>
-                                  <div>
-                                    <span className="text-xs text-rose-400 font-bold block mb-1">🔴 不行參戰的隊員 ({noVotes.length} 人)：</span>
-                                    {noVotes.length > 0 ? renderVoterBadges(noVotes, '🔴') : <span className="text-slate-600 text-xs italic block py-1">目前尚無人表達不行</span>}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      ) : (
-                        /* 日期時間投票模式 */
-                        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
-                          <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-4">
-                            <div>
-                              <h3 className="text-lg md:text-xl font-extrabold text-white">📅 候選出團時間投票</h3>
-                              <p className="text-xs md:text-sm text-slate-400 mt-1">
-                                請選擇可以配合的時間。<span className="text-amber-400 font-bold">（自動綁定當前選取角色與預設備註）</span>
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="space-y-6">
-                            {activeRaid.proposedTimes?.map((time, idx) => {
-                              const yesVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'yes') || [];
-                              const maybeVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'maybe') || [];
-                              const noVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'no') || [];
-
-                              const myVoteRecord = activeRaid.votes?.find(v => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job);
-                              const myChoice = myVoteRecord?.votes?.[idx] || null;
-
-                              const isFinalized = activeRaid.finalTimeIndex === idx;
-
-                              const renderVoterBadges = (votersList, emoji) => {
-                                if (votersList.length === 0) return null;
-                                return (
-                                  <div className="flex flex-wrap gap-2.5 mt-2">
-                                    {votersList.map((voter, vIdx) => {
-                                      const alreadyInRaid = activeRaid.participants?.some(p => p.userId === voter.userId && p.ign === voter.ign && p.job === voter.job);
-                                      return (
-                                        <div 
-                                          key={voter.userId + '-' + voter.ign + '-' + voter.job + '-' + vIdx}
-                                          className="inline-flex items-center space-x-2 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl text-sm transition hover:border-slate-755 max-w-full"
-                                        >
-                                          <span className="text-base shrink-0">{emoji}</span>
-                                          <span className="font-extrabold text-slate-100 whitespace-nowrap" title={voter.ign}>{voter.ign}</span>
-                                          
-                                          <span className="text-[11px] text-slate-400 font-bold shrink-0 flex items-center space-x-1 bg-slate-900 border border-slate-800/80 px-2 py-0.5 rounded-lg select-none">
-                                            {voter.job && renderJobIcon(voter.job, "w-3.5 h-3.5")}
-                                            <span className="text-slate-300 font-extrabold">{voter.job || '無職業'}</span>
-                                            <span className="text-slate-500">•</span>
-                                            <span className="text-white font-mono font-bold">Lv.{voter.level || '?'}</span>
-                                          </span>
-
-                                          {voter.memo && (
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setVoterDetailModal({ isOpen: true, voter });
-                                              }}
-                                              className="text-[10px] bg-slate-900 hover:bg-slate-850 hover:border-slate-700 border border-slate-800 px-2 py-1 rounded text-amber-300 transition shrink-0 flex items-center space-x-1 font-bold active:scale-95"
-                                            >
-                                              <span>💬 詳細</span>
-                                            </button>
-                                          )}
-                                          
-                                          {isCreator && (
-                                            <div className="flex items-center space-x-1.5 ml-2 border-l border-slate-800/85 pl-2">
-                                              {alreadyInRaid ? (
-                                                <span className="text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded text-xs shrink-0 select-none">
-                                                  已錄取
-                                                </span>
-                                              ) : (
-                                                <button
-                                                  type="button"
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleQuickEnroll(activeRaid.id, voter);
-                                                  }}
-                                                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
-                                                >
-                                                  ➕ 錄取
-                                                </button>
-                                              )}
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  handleRemoveVote(activeRaid.id, voter.userId, voter.ign, voter.job);
-                                                }}
-                                                className="bg-rose-950/60 hover:bg-rose-900 border border-rose-900 text-rose-300 font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
-                                              >
-                                                🗑️ 剃除
-                                              </button>
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                );
-                              };
-
-                              return (
-                                <div 
-                                  key={idx} 
-                                  className={`p-5 rounded-2xl border transition-all duration-350 flex flex-col gap-4 ${isFinalized ? 'border-amber-400 bg-amber-500/20 shadow-xl shadow-amber-500/10 ring-2 ring-amber-400/50' : 'bg-slate-950/40 border-slate-800'}`}
-                                >
-                                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                    <div className="flex-1">
-                                      <div className="flex items-center space-x-2.5">
-                                        <span className="text-xs font-bold text-indigo-400 font-mono">候選時間 #{idx + 1}</span>
-                                        {isFinalized && (
-                                          <span className="bg-amber-400 text-slate-950 text-[10.5px] font-black px-2.5 py-0.5 rounded-lg select-none shadow animate-pulse">
-                                            ★ 最終確定出團時間
-                                          </span>
-                                        )}
-                                      </div>
-                                      <h4 className="text-lg font-bold text-slate-200 mt-0.5">{formatDateTime(time)}</h4>
-                                    </div>
-
-                                    <div className="flex items-center space-x-2">
-                                      <button
-                                        onClick={() => handleVoteTime(activeRaid.id, idx, 'yes')}
-                                        className={`px-4 py-2 rounded-xl text-sm font-bold transition ${myChoice === 'yes' ? 'bg-emerald-600 text-white shadow shadow-emerald-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
-                                      >
-                                        🟢 可以
-                                      </button>
-                                      <button
-                                        onClick={() => handleVoteTime(activeRaid.id, idx, 'maybe')}
-                                        className={`px-4 py-2 rounded-xl text-sm font-bold transition ${myChoice === 'maybe' ? 'bg-amber-600 text-white shadow shadow-amber-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
-                                      >
-                                        🟡 也許
-                                      </button>
-                                      <button
-                                        onClick={() => handleVoteTime(activeRaid.id, idx, 'no')}
-                                        className={`px-4 py-2 rounded-xl text-sm font-bold transition ${myChoice === 'no' ? 'bg-rose-600 text-white shadow shadow-rose-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
-                                      >
-                                        🔴 不行
-                                      </button>
-
-                                      {isCreator && (
                                         <button
                                           type="button"
-                                          onClick={() => handleFinalizeTime(activeRaid.id, idx)}
-                                          className={`ml-2 px-3.5 py-2 rounded-xl text-xs font-black transition ${isFinalized ? 'bg-slate-900 border border-amber-500/40 text-amber-400 hover:bg-slate-850' : 'bg-amber-400 text-slate-950 hover:bg-amber-300'}`}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleRemoveVote(activeRaid.id, voter.userId, voter.ign, voter.job);
+                                          }}
+                                          className="bg-rose-950/60 hover:bg-rose-900 border border-rose-900 text-rose-300 font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
                                         >
-                                          {isFinalized ? '❌ 取消確定' : '🎯 確定此時間'}
+                                          🗑️ 剃除
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        };
+
+                        return (
+                          <div className="p-5 rounded-2xl border bg-slate-950/40 border-slate-800 flex flex-col gap-5">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                              <div>
+                                <h4 className="text-base font-bold text-slate-200">
+                                  您本週是否有意願參加【{boss?.name.split(' (')[0] || '此突襲王'}】突襲團？
+                                </h4>
+                                <p className="text-xs text-slate-500 mt-1">請利用下方按鈕登載意願</p>
+                              </div>
+                              <div className="flex items-center space-x-3">
+                                <button
+                                  onClick={() => handleVoteTime(activeRaid.id, 'interest', 'yes')}
+                                  className={`px-6 py-3 rounded-xl text-sm font-black transition flex items-center gap-1.5 active:scale-95 ${myChoice === 'yes' ? 'bg-emerald-600 text-white shadow shadow-emerald-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
+                                >
+                                  <span>🟢 可以配合</span>
+                                </button>
+                                <button
+                                  onClick={() => handleVoteTime(activeRaid.id, 'interest', 'no')}
+                                  className={`px-6 py-3 rounded-xl text-sm font-black transition flex items-center gap-1.5 active:scale-95 ${myChoice === 'no' ? 'bg-rose-600 text-white shadow shadow-rose-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
+                                >
+                                  <span>🔴 不行參戰</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="border-t border-slate-800/85 pt-4 space-y-3">
+                              <div>
+                                <span className="text-xs text-emerald-400 font-bold block mb-1">🟢 可以配合的隊員 ({yesVotes.length} 人)：</span>
+                                {yesVotes.length > 0 ? renderVoterBadges(yesVotes, '🟢') : <span className="text-slate-600 text-xs italic block py-1">目前尚無人表達有意願</span>}
+                              </div>
+                              <div>
+                                <span className="text-xs text-rose-400 font-bold block mb-1">🔴 不行參戰的隊員 ({noVotes.length} 人)：</span>
+                                {noVotes.length > 0 ? renderVoterBadges(noVotes, '🔴') : <span className="text-slate-600 text-xs italic block py-1">目前尚無人表達不行</span>}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    /* 日期時間投票模式 */
+                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+                      <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-4">
+                        <div>
+                          <h3 className="text-lg md:text-xl font-extrabold text-white">📅 候選出團時間投票</h3>
+                          <p className="text-xs md:text-sm text-slate-400 mt-1">
+                            請選擇可以配合的時間。<span className="text-amber-400 font-bold">（自動綁定當前選取角色與預設備註）</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-6">
+                        {activeRaid.proposedTimes?.map((time, idx) => {
+                          const yesVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'yes') || [];
+                          const maybeVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'maybe') || [];
+                          const noVotes = activeRaid.votes?.filter(v => v.votes?.[idx] === 'no') || [];
+
+                          const myVoteRecord = activeRaid.votes?.find(v => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job);
+                          const myChoice = myVoteRecord?.votes?.[idx] || null;
+
+                          const isFinalized = activeRaid.finalTimeIndex === idx;
+
+                          const renderVoterBadges = (votersList, emoji) => {
+                            if (votersList.length === 0) return null;
+                            return (
+                              <div className="flex flex-wrap gap-2.5 mt-2">
+                                {votersList.map((voter, vIdx) => {
+                                  const alreadyInRaid = activeRaid.participants?.some(p => p.userId === voter.userId && p.ign === voter.ign && p.job === voter.job);
+                                  return (
+                                    <div 
+                                      key={voter.userId + '-' + voter.ign + '-' + voter.job + '-' + vIdx}
+                                      className="inline-flex items-center space-x-2 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl text-sm transition hover:border-slate-755 max-w-full"
+                                    >
+                                      <span className="text-base shrink-0">{emoji}</span>
+                                      <span className="font-extrabold text-slate-100 whitespace-nowrap" title={voter.ign}>{voter.ign}</span>
+                                      
+                                      <span className="text-[11px] text-slate-400 font-bold shrink-0 flex items-center space-x-1 bg-slate-900 border border-slate-800/80 px-2 py-0.5 rounded-lg select-none">
+                                        {voter.job && renderJobIcon(voter.job, "w-3.5 h-3.5")}
+                                        <span className="text-slate-300 font-extrabold">{voter.job || '無職業'}</span>
+                                        <span className="text-slate-500">•</span>
+                                        <span className="text-white font-mono font-bold">Lv.{voter.level || '?'}</span>
+                                      </span>
+
+                                      {voter.memo && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setVoterDetailModal({ isOpen: true, voter });
+                                          }}
+                                          className="text-[10px] bg-slate-900 hover:bg-slate-850 hover:border-slate-700 border border-slate-800 px-2 py-1 rounded text-amber-300 transition shrink-0 flex items-center space-x-1 font-bold active:scale-95"
+                                        >
+                                          <span>💬 詳細</span>
                                         </button>
                                       )}
+                                      
+                                      {isCreator && (
+                                        <div className="flex items-center space-x-1.5 ml-2 border-l border-slate-800/85 pl-2">
+                                          {alreadyInRaid ? (
+                                            <span className="text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded text-xs shrink-0 select-none">
+                                              已錄取
+                                            </span>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleQuickEnroll(activeRaid.id, voter);
+                                              }}
+                                              className="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
+                                            >
+                                              ➕ 錄取
+                                            </button>
+                                          )}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleRemoveVote(activeRaid.id, voter.userId, voter.ign, voter.job);
+                                            }}
+                                            className="bg-rose-955/60 hover:bg-rose-900 border border-rose-900 text-rose-300 font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
+                                          >
+                                            🗑️ 剃除
+                                          </button>
+                                        </div>
+                                      )}
                                     </div>
-                                  </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          };
 
-                                  <div className="border-t border-slate-800/85 pt-3 space-y-2">
-                                    {yesVotes.length > 0 && (
-                                      <div>
-                                        <span className="text-xs text-emerald-400 font-bold block mb-1">🟢 可以配合的隊員：</span>
-                                        {renderVoterBadges(yesVotes, '🟢')}
-                                      </div>
-                                    )}
-                                    {maybeVotes.length > 0 && (
-                                      <div>
-                                        <span className="text-xs text-amber-400 font-bold block mb-1">🟡 可能配合的隊員：</span>
-                                        {renderVoterBadges(maybeVotes, '🟡')}
-                                      </div>
-                                    )}
-                                    {noVotes.length > 0 && (
-                                      <div>
-                                        <span className="text-xs text-rose-400 font-bold block mb-1">🔴 無法配合的隊員：</span>
-                                        {renderVoterBadges(noVotes, '🔴')}
-                                      </div>
-                                    )}
-                                    {yesVotes.length === 0 && maybeVotes.length === 0 && noVotes.length === 0 && (
-                                      <span className="text-slate-600 text-xs italic block py-1">目前尚無人對此時間段投票</span>
+                          return (
+                            <div 
+                              key={idx} 
+                              className={`p-5 rounded-2xl border transition-all duration-350 flex flex-col gap-4 ${isFinalized ? 'border-amber-400 bg-amber-500/20 shadow-xl shadow-amber-500/10 ring-2 ring-amber-400/50' : 'bg-slate-950/40 border-slate-800'}`}
+                            >
+                              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div className="flex-1">
+                                  <div className="flex items-center space-x-2.5">
+                                    <span className="text-xs font-bold text-indigo-400 font-mono">候選時間 #{idx + 1}</span>
+                                    {isFinalized && (
+                                      <span className="bg-amber-400 text-slate-950 text-[10.5px] font-black px-2.5 py-0.5 rounded-lg select-none shadow animate-pulse">
+                                        ★ 最終確定出團時間
+                                      </span>
                                     )}
                                   </div>
+                                  <h4 className="text-lg font-bold text-slate-200 mt-0.5">{formatDateTime(time)}</h4>
                                 </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
 
-                    {/* 右欄 (1/3)：團長排班工具（已移除原本固定的即時討論區，優化 layout 寬度） */}
-                    <div className="space-y-6">
-                      {isCreator && (
-                        <div className="bg-slate-900 border border-amber-500/20 rounded-3xl p-6 shadow-xl font-semibold">
-                          <h3 className="text-base font-extrabold text-amber-400 mb-1.5">👑 團長排班工具</h3>
-                          <p className="text-xs text-slate-400 mb-4 leading-relaxed">請利用下方各隊名單中卡片底部的分組按鈕，直接將人員錄取、歸類 or 移出，變更將會即時同步！</p>
-                          <button
-                            onClick={() => handleResetRaid(activeRaid.id)}
-                            className="w-full bg-slate-950 hover:bg-slate-900 border border-amber-500/30 text-amber-400 font-bold py-3 rounded-xl text-xs transition"
-                          >
-                            🔄 一鍵清空出團名單與投票
-                          </button>
-                        </div>
-                      )}
+                                <div className="flex items-center space-x-2">
+                                  <button
+                                    onClick={() => handleVoteTime(activeRaid.id, idx, 'yes')}
+                                    className={`px-4 py-2 rounded-xl text-sm font-bold transition ${myChoice === 'yes' ? 'bg-emerald-600 text-white shadow shadow-emerald-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
+                                  >
+                                    🟢 可以
+                                  </button>
+                                  <button
+                                    onClick={() => handleVoteTime(activeRaid.id, idx, 'maybe')}
+                                    className={`px-4 py-2 rounded-xl text-sm font-bold transition ${myChoice === 'maybe' ? 'bg-amber-600 text-white shadow shadow-amber-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
+                                  >
+                                    🟡 也許
+                                  </button>
+                                  <button
+                                    onClick={() => handleVoteTime(activeRaid.id, idx, 'no')}
+                                    className={`px-4 py-2 rounded-xl text-sm font-bold transition ${myChoice === 'no' ? 'bg-rose-600 text-white shadow shadow-rose-500/30' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
+                                  >
+                                    🔴 不行
+                                  </button>
+
+                                  {isCreator && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleFinalizeTime(activeRaid.id, idx)}
+                                      className={`ml-2 px-3.5 py-2 rounded-xl text-xs font-black transition ${isFinalized ? 'bg-slate-900 border border-amber-500/40 text-amber-400 hover:bg-slate-850' : 'bg-amber-400 text-slate-950 hover:bg-amber-300'}`}
+                                    >
+                                      {isFinalized ? '❌ 取消確定' : '🎯 確定此時間'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="border-t border-slate-800/85 pt-3 space-y-2">
+                                {yesVotes.length > 0 && (
+                                  <div>
+                                    <span className="text-xs text-emerald-400 font-bold block mb-1">🟢 可以配合的隊員：</span>
+                                    {renderVoterBadges(yesVotes, '🟢')}
+                                  </div>
+                                )}
+                                {maybeVotes.length > 0 && (
+                                  <div>
+                                    <span className="text-xs text-amber-400 font-bold block mb-1">🟡 可能配合的隊員：</span>
+                                    {renderVoterBadges(maybeVotes, '🟡')}
+                                  </div>
+                                )}
+                                {noVotes.length > 0 && (
+                                  <div>
+                                    <span className="text-xs text-rose-400 font-bold block mb-1">🔴 無法配合的隊員：</span>
+                                    {renderVoterBadges(noVotes, '🔴')}
+                                  </div>
+                                )}
+                                {yesVotes.length === 0 && maybeVotes.length === 0 && noVotes.length === 0 && (
+                                  <span className="text-slate-600 text-xs italic block py-1">目前尚無人對此時間段投票</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* 分組名單 */}
                   {(() => {
@@ -2060,6 +2085,7 @@
                                           <div className="flex flex-wrap gap-1">
                                             {groupKey !== '1' && (
                                               <button 
+                                                type="button"
                                                 onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, p.job, '1')} 
                                                 className="bg-slate-900 hover:bg-slate-800 text-slate-200 text-[11px] px-2 py-1.5 rounded-lg border border-slate-800 transition font-bold"
                                               >
@@ -2068,6 +2094,7 @@
                                             )}
                                             {groupKey !== '2' && partyCount >= 2 && (
                                               <button 
+                                                type="button"
                                                 onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, p.job, '2')} 
                                                 className="bg-slate-900 hover:bg-slate-800 text-slate-200 text-[11px] px-2 py-1.5 rounded-lg border border-slate-800 transition font-bold"
                                               >
@@ -2076,6 +2103,7 @@
                                             )}
                                             {groupKey !== '3' && partyCount >= 3 && (
                                               <button 
+                                                type="button"
                                                 onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, p.job, '3')} 
                                                 className="bg-slate-900 hover:bg-slate-800 text-slate-200 text-[11px] px-2 py-1.5 rounded-lg border border-slate-800 transition font-bold"
                                               >
@@ -2084,6 +2112,7 @@
                                             )}
                                             {groupKey !== 'reserve' && (
                                               <button 
+                                                type="button"
                                                 onClick={() => handleAssignParty(activeRaid.id, p.userId, p.ign, p.job, 'reserve')} 
                                                 className="bg-slate-900 hover:bg-slate-850 text-slate-200 text-[11px] px-2 py-1.5 rounded-lg border border-slate-800 transition font-bold"
                                               >
@@ -2092,8 +2121,9 @@
                                             )}
                                           </div>
                                           <button 
+                                            type="button"
                                             onClick={() => handleKickParticipant(activeRaid.id, p.userId, p.ign, p.job)} 
-                                            className="bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900/50 text-rose-300 text-[11px] px-2 py-1.5 rounded-lg transition font-bold shrink-0"
+                                            className="bg-rose-955/40 hover:bg-rose-900/60 border border-rose-900/50 text-rose-300 text-[11px] px-2 py-1.5 rounded-lg transition font-bold shrink-0"
                                           >
                                             剔除
                                           </button>
@@ -2119,6 +2149,7 @@
                               <span className="text-xs text-slate-400 px-2 font-bold select-none">調整組數:</span>
                               {partyCount < 2 && (
                                 <button 
+                                  type="button"
                                   onClick={() => handleUpdatePartyCount(activeRaid.id, 2)} 
                                   className="bg-emerald-600/30 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 text-xs font-bold px-3 py-1.5 rounded-lg transition active:scale-95"
                                 >
@@ -2127,6 +2158,7 @@
                               )}
                               {partyCount < 3 && partyCount >= 2 && (
                                 <button 
+                                  type="button"
                                   onClick={() => handleUpdatePartyCount(activeRaid.id, 3)} 
                                   className="bg-violet-600/30 hover:bg-violet-600 border border-violet-500/40 text-violet-300 text-xs font-bold px-3 py-1.5 rounded-lg transition active:scale-95"
                                 >
@@ -2135,6 +2167,7 @@
                               )}
                               {partyCount > 1 && (
                                 <button 
+                                  type="button"
                                   onClick={() => handleUpdatePartyCount(activeRaid.id, partyCount - 1)} 
                                   className="bg-slate-800/60 hover:bg-slate-755 border border-slate-700 text-slate-300 text-xs font-bold px-3 py-1.5 rounded-lg transition active:scale-95"
                                 >
@@ -2145,7 +2178,7 @@
                           )}
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           {renderRosterGroup('遠征一隊 (Party 1)', party1, '1', 'bg-blue-500')}
                           {partyCount >= 2 && renderRosterGroup('遠征二隊 (Party 2)', party2, '2', 'bg-emerald-500')}
                           {partyCount >= 3 && renderRosterGroup('遠征三隊 (Party 3)', party3, '3', 'bg-violet-500')}
@@ -2162,7 +2195,7 @@
           {/* 💡 浮動討論區按鈕 & 懸浮即時聊天窗 */}
           {activeRaid && (
             <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end space-y-4">
-              {/* 懸浮討論區主視窗 (物理獨立且支援「🔳 放大全螢幕視窗模式」 👑) */}
+              {/* 懸浮討論區主視窗 (物理獨立且支援「🔳 放大全螢幕視窗模式」) */}
               {isChatOpen && (
                 <div className={`bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl flex flex-col transition-all duration-300 ease-in-out animate-in fade-in slide-in-from-bottom-5 ${
                   isChatMaximized 
@@ -2181,7 +2214,7 @@
                     <div className="flex items-center space-x-2.5">
                       <span className="text-[10px] text-slate-500 animate-pulse">● 實時</span>
                       
-                      {/* 💡 放大全螢幕按鈕 🔳 */}
+                      {/* 放大全螢幕按鈕 🔳 */}
                       <button 
                         type="button"
                         onClick={() => setIsChatMaximized(!isChatMaximized)}
@@ -2189,12 +2222,10 @@
                         title={isChatMaximized ? "恢復原本大小" : "放大至全螢幕"}
                       >
                         {isChatMaximized ? (
-                          /* Minimize SVG */
                           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7" />
                           </svg>
                         ) : (
-                          /* Maximize SVG */
                           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
                           </svg>
@@ -2214,7 +2245,7 @@
                   {/* 留言訊息列表 (💡 支援 Discord 風格未讀紅線分水嶺 🔴) */}
                   <div 
                     ref={chatContainerRef}
-                    className="flex-1 overflow-y-auto pr-1 space-y-3.5 mb-3 scrollbar-thin scrollbar-thumb-slate-800"
+                    className="flex-1 overflow-y-auto pr-1 space-y-4 mb-3 scrollbar-thin scrollbar-thumb-slate-800"
                   >
                     {chatMessages.length === 0 ? (
                       <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-600 italic">
@@ -2228,7 +2259,7 @@
                           const isMe = msg.userId === customUid && msg.ign === activeCharacter.ign;
                           const msgTime = msg.timestamp || (msg.createdAt?.seconds ? msg.createdAt.seconds * 1000 : 0);
                           
-                          // 💡 判定是否需要在這條訊息上方插入 Discord 紅線
+                          // 判定是否需要在這條訊息上方插入 Discord 紅線
                           const showRedLine = msgTime > chatOpenedLastReadTime && index > 0 && !hasRenderedRedLine;
                           if (showRedLine) {
                             hasRenderedRedLine = true;
@@ -2236,6 +2267,7 @@
 
                           const msgDate = new Date(msgTime);
                           const timeString = msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                          const isRecalled = msg.recalled === true;
 
                           return (
                             <React.Fragment key={msg.id || index}>
@@ -2252,13 +2284,13 @@
                                 </div>
                               )}
 
-                              <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1`}>
-                                {/* 💡 比照「圖3」進行高寬度、大字型、高對比的 IGN 與職業名牌設計 (完美放大 👑) */}
+                              <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1 group`}>
+                                {/* 名稱 & 職業身分頭銜 (比照圖3極致放大) */}
                                 <div className={`flex flex-wrap items-center gap-2 mb-0.5 ${isMe ? 'flex-row-reverse' : ''}`}>
-                                  {/* IGN 遊戲名稱 (高清晰放大) */}
+                                  {/* IGN 遊戲名稱 */}
                                   <span className="text-sm md:text-base font-black text-slate-100 select-text tracking-wide">{msg.ign}</span>
                                   
-                                  {/* 職業專屬身分勳章氣泡 */}
+                                  {/* 職業名牌 */}
                                   <span className="inline-flex items-center space-x-1.5 bg-slate-950/90 border border-slate-800 px-2.5 py-0.5 rounded-lg text-xs font-bold select-none shadow">
                                     {renderJobIcon(msg.job, "w-4 h-4")}
                                     <span className="text-slate-300 font-extrabold">{msg.job}</span>
@@ -2266,19 +2298,52 @@
                                     <span className="text-amber-400 font-mono font-black">Lv.{msg.level || '?'}</span>
                                   </span>
 
-                                  {/* 傳送時間 */}
-                                  <span className="text-[10px] text-slate-500 font-mono self-end">
-                                    {timeString}
+                                  {/* 傳送時間與「自主收回 / 刪除管理」操作列（新增部分 🌟） */}
+                                  <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5 select-none">
+                                    <span>{timeString}</span>
+                                    
+                                    {/* 💡 自己的訊息可「收回」（已收回的則不再顯示） */}
+                                    {isMe && !isRecalled && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRecallMessage(msg.id)}
+                                        className="text-indigo-400 hover:text-indigo-300 hover:underline font-bold transition ml-1"
+                                      >
+                                        [收回]
+                                      </button>
+                                    )}
+
+                                    {/* 💡 管理員可「徹底刪除」任何訊息 */}
+                                    {isAdminLoggedIn && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteMessage(msg.id)}
+                                        className="text-rose-400 hover:text-rose-300 hover:underline font-bold transition ml-1"
+                                      >
+                                        [刪除]
+                                      </button>
+                                    )}
                                   </span>
                                 </div>
 
-                                {/* 對話泡泡 */}
+                                {/* 對話泡泡（已收回樣式智慧變更 🚫） */}
                                 <div className={`px-4 py-2.5 rounded-2xl max-w-[90%] text-sm leading-relaxed break-all ${
                                   isMe 
-                                    ? 'bg-indigo-600 text-white rounded-tr-none shadow shadow-indigo-600/10' 
-                                    : 'bg-slate-950 text-slate-200 rounded-tl-none border border-slate-800'
+                                    ? isRecalled
+                                      ? 'bg-slate-900/40 text-slate-500 border border-slate-800/40 rounded-tr-none italic'
+                                      : 'bg-indigo-600 text-white rounded-tr-none shadow shadow-indigo-600/10' 
+                                    : isRecalled
+                                      ? 'bg-slate-900/40 text-slate-500 border border-slate-800/40 rounded-tl-none italic'
+                                      : 'bg-slate-950 text-slate-200 rounded-tl-none border border-slate-800'
                                 }`}>
-                                  {msg.text}
+                                  {isRecalled ? (
+                                    <span className="flex items-center space-x-1.5 opacity-80">
+                                      <span>🚫</span>
+                                      <span>此訊息已收回</span>
+                                    </span>
+                                  ) : (
+                                    msg.text
+                                  )}
                                 </div>
                               </div>
                             </React.Fragment>
@@ -2393,7 +2458,7 @@
                             const defaultParties = b.maxPlayers > 12 ? 3 : (b.maxPlayers > 6 ? 2 : 1);
                             setNewRaid({ ...newRaid, bossId: b.id, partyCount: defaultParties });
                           }}
-                          className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition ${newRaid.bossId === b.id ? 'bg-slate-800 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-850 text-slate-300'}`}
+                          className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition ${newRaid.bossId === b.id ? 'bg-slate-800 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-855 text-slate-300'}`}
                         >
                           <span className="text-2xl">{b.icon || '👹'}</span>
                           <div className="min-w-0 flex-1">
@@ -2977,7 +3042,7 @@
                             key={preset.value}
                             type="button"
                             onClick={() => setNewBossData({ ...newBossData, color: preset.value })}
-                            className={`p-2 rounded-lg border text-[10px] font-black tracking-wide text-center transition bg-gradient-to-r ${preset.value} ${newBossData.color === preset.value ? 'border-amber-400 ring-2 ring-amber-400/30 scale-105' : 'border-slate-855 opacity-80 hover:opacity-100'}`}
+                            className={`p-2 rounded-lg border text-[10px] font-black tracking-wide text-center transition bg-gradient-to-r ${preset.value} ${newBossData.color === preset.value ? 'border-amber-400 ring-2 ring-amber-450/35 scale-105' : 'border-slate-855 opacity-80 hover:opacity-100'}`}
                           >
                             <span className="text-white drop-shadow-sm">{preset.name}</span>
                           </button>
@@ -3030,7 +3095,7 @@
                             <button
                               type="button"
                               onClick={() => handleDeleteBoss(b.id, b.name)}
-                              className="bg-rose-950/30 hover:bg-rose-900/60 border border-rose-900/50 text-rose-300 font-extrabold px-3 py-1.5 rounded-lg text-[10px] transition shrink-0"
+                              className="bg-rose-955/30 hover:bg-rose-900/60 border border-rose-900/50 text-rose-300 font-extrabold px-3 py-1.5 rounded-lg text-[10px] transition shrink-0"
                             >
                               🗑️ 刪除
                             </button>
@@ -3299,7 +3364,7 @@
                                 <span className="font-bold text-slate-200 text-sm">👤 用戶身分 ({chars.length} 個角色)</span>
                                 <button
                                   onClick={() => handleDeleteUserProfile(u.userId || u.id, activeChar.ign)}
-                                  className="bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900 text-rose-300 font-bold px-2.5 py-1.5 rounded-lg text-xs transition animate-pulse"
+                                  className="bg-rose-955/40 hover:bg-rose-900/60 border border-rose-900 text-rose-300 font-bold px-2.5 py-1.5 rounded-lg text-xs transition animate-pulse"
                                 >
                                   🗑️ 刪除全部角色卡
                                 </button>
@@ -3355,7 +3420,7 @@
                       
                       <button
                         onClick={handleResetConfig}
-                        className="w-full bg-rose-950 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold py-2 rounded-xl text-xs transition active:scale-95 animate-pulse"
+                        className="w-full bg-rose-955 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold py-2 rounded-xl text-xs transition active:scale-95 animate-pulse"
                       >
                         ⚠️ 移除並重置本網頁 Firebase 金鑰
                       </button>
@@ -3370,7 +3435,7 @@
                 </div>
 
                 <div className="flex justify-end space-x-2 border-t border-slate-800 pt-3 mt-4 text-xs font-bold">
-                  <button onClick={() => setShowAdminConsole(false)} className="bg-slate-800 hover:bg-slate-755 px-4 py-2 rounded-xl text-slate-300">關閉後台</button>
+                  <button onClick={() => setShowAdminConsole(false)} className="bg-slate-800 hover:bg-slate-750 px-4 py-2 rounded-xl text-slate-300">關閉後台</button>
                 </div>
 
               </div>
@@ -3448,7 +3513,7 @@
             <div className="fixed bottom-4 right-4 z-50 animate-bounce">
               <div className={`px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 border ${
                 toast.type === 'error' 
-                  ? 'bg-rose-950/90 border-rose-800 text-rose-200' 
+                  ? 'bg-rose-955/90 border-rose-800 text-rose-200' 
                   : 'bg-emerald-950/90 border-emerald-800 text-emerald-200'
               }`}>
                 <span>{toast.type === 'error' ? '❌' : '✅'}</span>
