@@ -4,14 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NyxShade遠征隊組隊系統</title>
-  <!-- React & ReactDOM CDN -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <!-- Babel (用於在瀏覽器中直接解析 JSX) -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Firebase Compat SDKs (全域引入) -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -99,17 +95,6 @@
       { status: '🟡 【平穩修行】末吉', color: 'from-orange-400 to-amber-600 bg-orange-500/10 text-amber-500 border-orange-500/20', dcColor: 15105570, desc: '今日衝裝有小機率爆炸！推薦使用 60% 捲求穩，或者把素材先屯在倉庫，今天不宜與機率對賭。' },
       { status: '🟣 【靜心放空】平', color: 'from-purple-500 to-slate-700 bg-purple-500/10 text-purple-400 border-purple-500/20', dcColor: 10181046, desc: '不痛不癢的一天，適合發呆聊天。今天去帶帶公會新手，或在市場當稱職的商人吧！' },
       { status: '💀 【水逆退散】凶', color: 'from-red-600 to-rose-950 bg-red-500/10 text-rose-500 border-red-500/30', dcColor: 15158332, desc: '今日衝捲必爆、挑戰 Boss 必被誘惑！強烈建議今天乖乖當個吹風機發呆，別碰任何機率裝備！' }
-    ];
-
-    const GACHA_CHANNELS = [
-      'CH 1 - 鬧區頻道 (吸取全服歐氣，玄學衝裝首選)',
-      'CH 3 - 幽靜清閒頻 (無人打擾，打寶致富好地方)',
-      'CH 5 - 幸運單數頻 (自帶機率玄學加成)',
-      'CH 8 - 發發發諧音頻 (楓幣大亨最愛駐紮地)',
-      'CH 10 - 十全十美頻 (傷害數值最漂亮)',
-      'CH 13 - 逆天改命頻 (適合非酋翻身挑戰極限)',
-      'CH 17 - 奇蹟頻 (據說神蹟總是在此頻道誕生)',
-      'CH 20 - 終點站頻 (絕處逢生、驚喜不斷的神秘頻道)'
     ];
 
     const GACHA_SPOTS = [
@@ -416,6 +401,8 @@
             localStorage.removeItem('artale_firebase_config');
             localStorage.removeItem('nyxshade_custom_uid');
             localStorage.removeItem('discord_user_profile');
+            localStorage.removeItem('nyxshade_last_gacha_time');
+            localStorage.removeItem('nyxshade_last_gacha_result');
             window.location.reload();
           }
         );
@@ -648,7 +635,7 @@
             setCustomUid(anonUid);
             setDiscordUser(null);
             showToast("已成功解除 Discord 連結狀態。");
-            setTimeout(() => window.location.reload(), 1000);
+            window.location.reload();
           }
         );
       };
@@ -969,6 +956,37 @@
       // 取得當前使用的出團角色
       const activeCharacter = profile.characters?.[profile.activeCharacterIndex] || profile.characters?.[0] || { ign: '', job: '主教', level: 120, memo: '' };
 
+      // 💡 檢查是否已經過早上 8 點的重置點
+      const checkHasResetPassed = (lastTimeMs) => {
+        const lastDate = new Date(lastTimeMs);
+        const now = new Date();
+
+        // 算得「昨天的 08:00」與「今天的 08:00」基準點
+        const getEightAmTarget = (date) => {
+          const d = new Date(date);
+          d.setHours(8, 0, 0, 0);
+          return d.getTime();
+        };
+
+        const nowEightAm = getEightAmTarget(now);
+        // 計算上一個 8 點的基準線
+        const lastEightAmThreshold = now.getTime() >= nowEightAm ? nowEightAm : nowEightAm - 24 * 60 * 60 * 1000;
+
+        // 如果上次抽卡時間小於上一個 8 點基準線，代表已經跨過 8 點，可以重新抽卡
+        return lastTimeMs < lastEightAmThreshold;
+      };
+
+      // 載入當日已保存的轉蛋歷史結果
+      useEffect(() => {
+        const savedResult = localStorage.getItem('nyxshade_last_gacha_result');
+        const savedTime = localStorage.getItem('nyxshade_last_gacha_time');
+        if (savedResult && savedTime) {
+          if (!checkHasResetPassed(Number(savedTime))) {
+            setGachaResult(JSON.parse(savedResult));
+          }
+        }
+      }, []);
+
       // 發起新團
       const handleCreateRaid = async (e) => {
         e.preventDefault();
@@ -1070,13 +1088,28 @@
         );
       };
 
+      // 產生隨選三個 0-9 數字函數
+      const generateLuckyNumbers = () => {
+        const n1 = Math.floor(Math.random() * 10);
+        const n2 = Math.floor(Math.random() * 10);
+        const n3 = Math.floor(Math.random() * 10);
+        return `${n1}, ${n2}, ${n3}`;
+      };
+
       // ==========================================
-      // 🔮 幸運轉蛋核心控制邏輯
+      // 🔮 幸運轉蛋核心控制邏輯（已限制每天早上八點重置一次）
       // ==========================================
       const handleSpinGacha = () => {
         if (!activeCharacter.ign) {
           showToast("⚠️ 請先設定右上角的身分角色卡才能啟用轉蛋！", "error");
           setShowProfileModal(true);
+          return;
+        }
+
+        // 每日限制檢查：讀取前次時間戳記
+        const lastGachaTime = localStorage.getItem('nyxshade_last_gacha_time');
+        if (lastGachaTime && !checkHasResetPassed(Number(lastGachaTime))) {
+          showToast("🛑 今天已經求過籤囉！請靜候明日早上 08:00 重新解鎖神社。", "error");
           return;
         }
 
@@ -1087,12 +1120,11 @@
         let count = 0;
         const interval = setInterval(() => {
           const randomFortune = GACHA_FORTUNES[Math.floor(Math.random() * GACHA_FORTUNES.length)];
-          const randomChannel = GACHA_CHANNELS[Math.floor(Math.random() * GACHA_CHANNELS.length)];
           const randomSpot = GACHA_SPOTS[Math.floor(Math.random() * GACHA_SPOTS.length)];
 
           setGachaResult({
             fortune: randomFortune,
-            channel: randomChannel,
+            luckyNumbers: generateLuckyNumbers(),
             spot: randomSpot
           });
 
@@ -1102,15 +1134,22 @@
             
             // 決定最終幸運結果
             const finalFortune = GACHA_FORTUNES[Math.floor(Math.random() * GACHA_FORTUNES.length)];
-            const finalChannel = GACHA_CHANNELS[Math.floor(Math.random() * GACHA_CHANNELS.length)];
             const finalSpot = GACHA_SPOTS[Math.floor(Math.random() * GACHA_SPOTS.length)];
+            const finalNumbers = generateLuckyNumbers();
 
-            setGachaResult({
+            const finalResult = {
               fortune: finalFortune,
-              channel: finalChannel,
+              luckyNumbers: finalNumbers,
               spot: finalSpot
-            });
+            };
+
+            setGachaResult(finalResult);
             setIsSpinning(false);
+
+            // 本地快取鎖定：記錄抽籤成果與當前毫秒數
+            localStorage.setItem('nyxshade_last_gacha_time', String(Date.now()));
+            localStorage.setItem('nyxshade_last_gacha_result', JSON.stringify(finalResult));
+
             showToast("🔮 今日好運轉蛋抽取完成！快秀出運勢給公會吧！");
           }
         }, 80);
@@ -1142,8 +1181,8 @@
                 inline: false
               },
               {
-                name: "📍 幸運打寶頻道",
-                value: `**${gachaResult.channel}**`,
+                name: "🎲 今日幸運數字",
+                value: `**[ ${gachaResult.luckyNumbers} ]**`,
                 inline: true
               },
               {
@@ -1886,7 +1925,7 @@
                           <span>🔮 楓之谷幸運神社</span>
                         </h3>
                         <p className="text-xs text-slate-400 mt-1">
-                          立刻來抽一發幸運神籤，看看今日衝裝與打寶運勢！
+                          立刻來抽一發幸運神籤，看看今日衝裝與打寶運勢！（每人每天早上 08:00 重置一次喔）
                         </p>
                       </div>
 
@@ -1934,17 +1973,17 @@
                           </p>
                         </div>
 
-                        {/* 幸運頻道卡 */}
+                        {/* 幸運數字卡 */}
                         <div className="p-4 rounded-2xl border border-slate-800 bg-slate-950/65 flex flex-col justify-between shadow-lg">
                           <div>
-                            <span className="text-[10.5px] font-bold text-slate-500 block uppercase tracking-wide">LUCKY CHANNEL</span>
-                            <h4 className="text-base font-black text-indigo-400 mt-1 flex items-center space-x-1.5">
-                              <span>🎰</span>
-                              <span className="truncate">{gachaResult.channel.split(' - ')[0]}</span>
+                            <span className="text-[10.5px] font-bold text-slate-500 block uppercase tracking-wide">LUCKY NUMBERS</span>
+                            <h4 className="text-xl font-black text-indigo-400 mt-1 flex items-center space-x-1.5">
+                              <span>🎲</span>
+                              <span className="truncate tracking-wider">[ {gachaResult.luckyNumbers} ]</span>
                             </h4>
                           </div>
                           <p className="text-xs text-slate-300 leading-relaxed mt-4 bg-slate-900/70 p-2.5 rounded-xl border border-slate-800">
-                            {gachaResult.channel}
+                            今日大發幸運數字：與身邊含有這些數字的戰友一起出征吧！
                           </p>
                         </div>
 
@@ -2117,7 +2156,7 @@
                   <div className="flex items-center">
                     <button
                       onClick={() => setCurrentRaidId(null)}
-                      className="inline-flex items-center space-x-2 bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white px-4 py-2.5 rounded-xl border border-slate-800 hover:border-slate-700 transition-all text-xs font-extrabold shadow-md active:scale-95 select-none"
+                      className="inline-flex items-center space-x-2 bg-slate-900 hover:bg-slate-855 text-slate-300 hover:text-white px-4 py-2.5 rounded-xl border border-slate-800 hover:border-slate-700 transition-all text-xs font-extrabold shadow-md active:scale-95 select-none"
                     >
                       <span className="text-sm">⬅️</span>
                       <span>返回大廳首頁</span>
@@ -2307,7 +2346,7 @@
                         };
 
                         return (
-                          <div className="p-5 rounded-2xl border bg-slate-950/40 border-slate-800 flex flex-col gap-5">
+                          <div className="p-5 rounded-2xl border bg-slate-955/40 border-slate-800 flex flex-col gap-5">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                               <div>
                                 <h4 className="text-base font-bold text-slate-200">
@@ -2451,7 +2490,7 @@
                           return (
                             <div 
                               key={idx} 
-                              className={`p-5 rounded-2xl border transition-all duration-350 flex flex-col gap-4 ${isFinalized ? 'border-amber-400 bg-amber-500/20 shadow-xl shadow-amber-500/10 ring-2 ring-amber-400/50' : 'bg-slate-950/40 border-slate-800'}`}
+                              className={`p-5 rounded-2xl border transition-all duration-350 flex flex-col gap-4 ${isFinalized ? 'border-amber-400 bg-amber-500/20 shadow-xl shadow-amber-500/10 ring-2 ring-amber-400/50' : 'bg-slate-955/40 border-slate-800'}`}
                             >
                               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                 <div className="flex-1">
@@ -2579,7 +2618,7 @@
                                   return (
                                     <div 
                                       key={`empty-${groupKey}-${idx}`} 
-                                      className="border border-dashed border-slate-800/80 bg-slate-950/20 rounded-2xl py-3 px-4 flex items-center justify-between text-slate-600 text-sm italic select-none"
+                                      className="border border-dashed border-slate-800/80 bg-slate-955/20 rounded-2xl py-3 px-4 flex items-center justify-between text-slate-600 text-sm italic select-none"
                                     >
                                       <div className="flex items-center space-x-2.5">
                                         <span className="font-mono font-bold text-slate-700 text-sm">{idx + 1}.</span>
@@ -2593,7 +2632,7 @@
                                 return (
                                   <div 
                                     key={p.userId + '-' + p.ign + '-' + p.job} 
-                                    className="bg-slate-950/50 hover:bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col gap-3 transition shadow-sm hover:border-slate-755"
+                                    className="bg-slate-955/50 hover:bg-slate-955 p-4 rounded-2xl border border-slate-800 flex flex-col gap-3 transition shadow-sm hover:border-slate-755"
                                   >
                                     <div className="flex flex-col gap-2 min-w-0">
                                       <div className="flex items-start justify-between min-w-0 gap-2">
@@ -2870,7 +2909,7 @@
                                         : 'bg-indigo-600 text-white rounded-tr-none shadow shadow-indigo-600/10' 
                                       : isRecalled
                                         ? 'bg-slate-900/40 text-slate-500 border border-slate-800/40 rounded-tl-none italic'
-                                        : 'bg-slate-950 text-slate-200 rounded-tl-none border border-slate-800'
+                                        : 'bg-slate-955 text-slate-200 rounded-tl-none border border-slate-800'
                                   }`}>
                                     {isRecalled ? (
                                       <span className="flex items-center space-x-1.5 opacity-85">
@@ -2988,7 +3027,7 @@
                       <button
                         type="button"
                         onClick={() => setNewRaid({ ...newRaid, mode: 'datetime' })}
-                        className={`py-3 px-4 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 ${newRaid.mode !== 'interest' ? 'bg-indigo-600/20 border-indigo-500 text-white shadow' : 'bg-slate-950 border-slate-855 text-slate-400'}`}
+                        className={`py-3 px-4 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 ${newRaid.mode !== 'interest' ? 'bg-indigo-600/20 border-indigo-500 text-white shadow' : 'bg-slate-955 border-slate-855 text-slate-400'}`}
                       >
                         <span className="font-bold text-xs">📅 指定日期時間</span>
                         <span className="text-[10px] opacity-75 font-normal">填寫具體時間供成員排班投票</span>
@@ -2996,7 +3035,7 @@
                       <button
                         type="button"
                         onClick={() => setNewRaid({ ...newRaid, mode: 'interest' })}
-                        className={`py-3 px-4 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 ${newRaid.mode === 'interest' ? 'bg-indigo-600/20 border-indigo-500 text-white shadow' : 'bg-slate-950 border-slate-855 text-slate-400'}`}
+                        className={`py-3 px-4 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 ${newRaid.mode === 'interest' ? 'bg-indigo-600/20 border-indigo-500 text-white shadow' : 'bg-slate-955 border-slate-855 text-slate-400'}`}
                       >
                         <span className="font-bold text-xs">🙋 收集出團意願</span>
                         <span className="text-[10px] opacity-75 font-normal">只調查「可以/不行」線上再協同</span>
@@ -3015,7 +3054,7 @@
                             const defaultParties = b.maxPlayers > 12 ? 3 : (b.maxPlayers > 6 ? 2 : 1);
                             setNewRaid({ ...newRaid, bossId: b.id, partyCount: defaultParties });
                           }}
-                          className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition ${newRaid.bossId === b.id ? 'bg-slate-800 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-855 text-slate-300'}`}
+                          className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition ${newRaid.bossId === b.id ? 'bg-slate-800 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-955 border-slate-855 text-slate-300'}`}
                         >
                           <span className="text-2xl">{b.icon || '👹'}</span>
                           <div className="min-w-0 flex-1">
@@ -3038,7 +3077,7 @@
                           className={`flex-1 py-2.5 rounded-xl border text-center font-bold text-xs transition-all ${
                             newRaid.partyCount === count
                               ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow ring-1 ring-amber-450'
-                              : 'bg-slate-950 border-slate-855 text-slate-400 hover:border-slate-800'
+                              : 'bg-slate-955 border-slate-855 text-slate-400 hover:border-slate-800'
                           }`}
                         >
                           {count === 1 ? '🔵 一隊 (6人)' : count === 2 ? '🟢 二隊 (12人)' : '🟣 三隊 (18人)'}
@@ -3055,7 +3094,7 @@
                       value={newRaid.title}
                       onChange={(e) => setNewRaid({ ...newRaid, title: e.target.value })}
                       placeholder="例：週六晚上普通炎魔首發團"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 focus:outline-none text-slate-100"
+                      className="w-full bg-slate-955 border border-slate-800 rounded-xl px-3 py-2 focus:outline-none text-slate-100"
                     />
                   </div>
 
@@ -3084,7 +3123,7 @@
                                 setNewRaid({ ...newRaid, proposedTimes: updated });
                               }}
                               style={{ colorScheme: 'dark' }}
-                              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
+                              className="flex-1 bg-slate-955 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
                             />
                             {newRaid.proposedTimes.length > 1 && (
                               <button
@@ -3111,7 +3150,7 @@
                       onChange={(e) => setNewRaid({ ...newRaid, notes: e.target.value })}
                       placeholder="打王要求，自備藥水等..."
                       rows={3}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none resize-none font-semibold"
+                      className="w-full bg-slate-955 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none resize-none font-semibold"
                     />
                   </div>
 
@@ -3142,14 +3181,14 @@
                       <button
                         type="button"
                         onClick={() => setEditRaidData({ ...editRaidData, mode: 'datetime' })}
-                        className={`py-2 px-3 rounded-xl border font-bold text-xs ${editRaidData.mode !== 'interest' ? 'bg-indigo-600/20 border-indigo-500 text-white shadow' : 'bg-slate-950 border-slate-855 text-slate-400'}`}
+                        className={`py-2 px-3 rounded-xl border font-bold text-xs ${editRaidData.mode !== 'interest' ? 'bg-indigo-600/20 border-indigo-500 text-white shadow' : 'bg-slate-955 border-slate-855 text-slate-400'}`}
                       >
                         📅 指定日期時間
                       </button>
                       <button
                         type="button"
                         onClick={() => setEditRaidData({ ...editRaidData, mode: 'interest' })}
-                        className={`py-2 px-3 rounded-xl border font-bold text-xs ${editRaidData.mode === 'interest' ? 'bg-indigo-600/20 border-indigo-500 text-white shadow' : 'bg-slate-950 border-slate-855 text-slate-400'}`}
+                        className={`py-2 px-3 rounded-xl border font-bold text-xs ${editRaidData.mode === 'interest' ? 'bg-indigo-600/20 border-indigo-500 text-white shadow' : 'bg-slate-955 border-slate-855 text-slate-400'}`}
                       >
                         🙋 收集出團意願
                       </button>
@@ -3167,7 +3206,7 @@
                             const defaultParties = b.maxPlayers > 12 ? 3 : (b.maxPlayers > 6 ? 2 : 1);
                             setEditRaidData({ ...editRaidData, bossId: b.id, partyCount: defaultParties });
                           }}
-                          className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition ${editRaidData.bossId === b.id ? 'bg-slate-800 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-950 border-slate-855 text-slate-300'}`}
+                          className={`p-3 rounded-xl border text-left flex items-center space-x-2 transition ${editRaidData.bossId === b.id ? 'bg-slate-800 border-indigo-500 shadow-md shadow-indigo-500/10' : 'bg-slate-955 border-slate-855 text-slate-300'}`}
                         >
                           <span className="text-2xl">{b.icon || '👹'}</span>
                           <div className="min-w-0 flex-1">
@@ -3190,7 +3229,7 @@
                           className={`flex-1 py-2 rounded-xl border text-center font-bold text-xs transition-all ${
                             editRaidData.partyCount === count
                               ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow'
-                              : 'bg-slate-950 border-slate-855 text-slate-400 hover:border-slate-800'
+                              : 'bg-slate-955 border-slate-855 text-slate-400 hover:border-slate-800'
                           }`}
                         >
                           {count === 1 ? '🔵 一隊' : count === 2 ? '🟢 二隊' : '🟣 三隊'}
@@ -3207,7 +3246,7 @@
                       value={editRaidData.title}
                       onChange={(e) => setEditRaidData({ ...editRaidData, title: e.target.value })}
                       placeholder="例如：週六晚上普通炎魔首發團"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 focus:outline-none text-slate-100"
+                      className="w-full bg-slate-955 border border-slate-800 rounded-xl px-3 py-2 focus:outline-none text-slate-100"
                     />
                   </div>
 
@@ -3236,7 +3275,7 @@
                                 setEditRaidData({ ...editRaidData, proposedTimes: updated });
                               }}
                               style={{ colorScheme: 'dark' }}
-                              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
+                              className="flex-1 bg-slate-955 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
                             />
                             {editRaidData.proposedTimes.length > 1 && (
                               <button
@@ -3263,7 +3302,7 @@
                       onChange={(e) => setEditRaidData({ ...editRaidData, notes: e.target.value })}
                       placeholder="打王戰術要求，或藥水等裝備限制..."
                       rows={3}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none resize-none"
+                      className="w-full bg-slate-955 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none resize-none"
                     />
                   </div>
 
@@ -3294,7 +3333,7 @@
                 {/* 🛡️ Discord 連結身分卡面板 */}
                 <div className="mb-6 font-semibold">
                   {discordUser ? (
-                    <div className="flex items-center justify-between bg-slate-950 border border-indigo-500/20 p-4 rounded-2xl shadow-inner">
+                    <div className="flex items-center justify-between bg-slate-955 border border-indigo-500/20 p-4 rounded-2xl shadow-inner">
                       <div className="flex items-center space-x-3.5 min-w-0">
                         <img 
                           src={discordUser.avatar} 
@@ -3317,7 +3356,7 @@
                       </button>
                     </div>
                   ) : (
-                    <div className="p-6 bg-slate-950 border border-slate-855 rounded-2xl text-center space-y-4">
+                    <div className="p-6 bg-slate-955 border border-slate-855 rounded-2xl text-center space-y-4">
                       <div className="flex items-center justify-center space-x-2">
                         <svg className="w-6 h-6 fill-[#5865F2]" viewBox="0 0 127.14 96.36">
                           <path d="M107.7,8.07A105.15,105.15,0,0,0,77.26,0a77.19,77.19,0,0,0-3.3,6.83A96.67,96.67,0,0,0,53.22,6.83,77.19,77.19,0,0,0,49.88,0,105.15,105.15,0,0,0,19.44,8.07C3.66,31.58-1.86,54.65,1,77.53A105.73,105.73,0,0,0,32,96.36a77.7,77.7,0,0,0,6.63-10.85,68.43,68.43,0,0,1-10.5-5c.9-.65,1.76-1.34,2.58-2a75.59,75.59,0,0,0,73,0c.83.68,1.69,1.37,2.58,2a68.43,68.43,0,0,1-10.5,5,77.7,77.7,0,0,0,6.63,10.85,105.73,105.73,0,0,0,31.06-18.83C129.87,48.24,123.7,25.41,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53S36.18,40.36,42.45,40.36,53.83,46,53.83,53,48.72,65.69,42.45,65.69ZM42.24,0C78.41,65.69,73.24,60,73.24,53S78.41,40.36,84.69,40.36,96.07,46,96.07,53,91,65.69,84.69,65.69Z"/>
@@ -3348,7 +3387,7 @@
                 {/* 角色表單區 - 💡 如果沒有登入 DC，則鎖定本區並提示 */}
                 <div className="relative">
                   {!discordUser && (
-                    <div className="absolute inset-0 z-10 bg-slate-900/80 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center text-center p-6 border border-slate-800">
+                    <div className="absolute inset-0 z-10 bg-black/60 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center text-center p-6 border border-slate-800">
                       <span className="text-4xl mb-3">🔒</span>
                       <h4 className="text-base font-black text-amber-400">出團角色卡已鎖定</h4>
                       <p className="text-xs text-slate-400 max-w-sm mt-2 leading-relaxed">
@@ -3360,7 +3399,7 @@
 
                   <div className={`space-y-4 max-h-[320px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-800 font-semibold font-bold transition-all duration-300 ${!discordUser ? 'blur-sm pointer-events-none opacity-40 select-none' : ''}`}>
                     {tempCharacters.map((char, index) => (
-                      <div key={index} className="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4 relative">
+                      <div key={index} className="p-5 bg-slate-955 border border-slate-800 rounded-2xl space-y-4 relative">
                         <div className="flex items-center justify-between">
                           <label className="flex items-center space-x-2.5 cursor-pointer">
                             <input
@@ -3584,14 +3623,14 @@
                         placeholder="例如: 混沌黑龍王 (Chaos Horntail)"
                         value={newBossData.name}
                         onChange={(e) => setNewBossData({ ...newBossData, name: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 focus:outline-none text-slate-100"
+                        className="w-full bg-slate-955 border border-slate-800 rounded-xl px-3 py-2.5 focus:outline-none text-slate-100"
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="col-span-2">
                         <label className="block text-xs font-bold text-slate-400 mb-2">選擇 Emoji 圖標 ({newBossData.icon})</label>
-                        <div className="grid grid-cols-6 gap-1.5 p-2.5 bg-slate-950 border border-slate-855 rounded-xl">
+                        <div className="grid grid-cols-6 gap-1.5 p-2.5 bg-slate-955 border border-slate-855 rounded-xl">
                           {BOSS_EMOJIS_LIST.map((emoji) => (
                             <button
                               key={emoji}
@@ -3613,7 +3652,7 @@
                           placeholder="18"
                           value={newBossData.maxPlayers}
                           onChange={(e) => setNewBossData({ ...newBossData, maxPlayers: Number(e.target.value) || 18 })}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 focus:outline-none text-slate-100 font-mono"
+                          className="w-full bg-slate-955 border border-slate-800 rounded-xl px-3 py-2.5 focus:outline-none text-slate-100 font-mono"
                         />
                       </div>
                     </div>
@@ -3641,7 +3680,7 @@
                         placeholder="例: 極高血量與走位挑戰..."
                         value={newBossData.desc}
                         onChange={(e) => setNewBossData({ ...newBossData, desc: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 focus:outline-none text-slate-100 text-xs"
+                        className="w-full bg-slate-955 border border-slate-800 rounded-xl px-3 py-2 focus:outline-none text-slate-100 text-xs"
                       />
                     </div>
 
@@ -3662,13 +3701,13 @@
                     </h4>
                     
                     {customBossesList.length === 0 ? (
-                      <div className="py-20 text-center text-slate-500 text-xs italic bg-slate-950 border border-slate-855 rounded-2xl">
+                      <div className="py-20 text-center text-slate-500 text-xs italic bg-slate-955 border border-slate-855 rounded-2xl">
                         目前尚無任何自訂突襲 Boss 紀錄
                       </div>
                     ) : (
                       <div className="max-h-[350px] overflow-y-auto pr-2 space-y-2.5 scrollbar-thin scrollbar-thumb-slate-800">
                         {customBossesList.map((b) => (
-                          <div key={b.id} className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-slate-855 hover:border-slate-800 transition text-xs">
+                          <div key={b.id} className="flex items-center justify-between p-3.5 bg-slate-955 rounded-xl border border-slate-855 hover:border-slate-800 transition text-xs">
                             <div className="flex items-center space-x-3 truncate">
                               <span className="text-2xl shrink-0">{b.icon || '👹'}</span>
                               <div className="truncate min-w-0">
@@ -3722,7 +3761,7 @@
                       <select
                         value={newJobData.category}
                         onChange={(e) => setNewJobData({ ...newJobData, category: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 focus:outline-none text-slate-100 cursor-pointer"
+                        className="w-full bg-slate-955 border border-slate-800 rounded-xl px-3 py-2.5 focus:outline-none text-slate-100 cursor-pointer"
                       >
                         {Object.keys(jobCategories).map(cat => (
                           <option key={cat} value={cat}>{cat}</option>
@@ -3734,8 +3773,8 @@
                       <label className="block text-xs font-bold text-slate-400 mb-1.5">選擇轉職階段</label>
                       <select
                         value={newJobData.tier}
-                        onChange={(e) => setNewJobData({ ...newJobData, category: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 focus:outline-none text-slate-100 cursor-pointer"
+                        onChange={(e) => setNewJobData({ ...newJobData, tier: e.target.value })}
+                        className="w-full bg-slate-955 border border-slate-800 rounded-xl px-3 py-2.5 focus:outline-none text-slate-100 cursor-pointer"
                       >
                         <option value="2轉">2轉 (Lv.30)</option>
                         <option value="3轉">3轉 (Lv.70)</option>
@@ -3751,7 +3790,7 @@
                         placeholder="例如: 魂騎士, 破風使者"
                         value={newJobData.name}
                         onChange={(e) => setNewJobData({ ...newJobData, name: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 focus:outline-none text-slate-100"
+                        className="w-full bg-slate-955 border border-slate-800 rounded-xl px-3.5 py-2.5 focus:outline-none text-slate-100"
                       />
                     </div>
 
@@ -3772,7 +3811,7 @@
                       {Object.entries(jobCategories).map(([cat, tiers]) => {
                         const isNested = tiers && typeof tiers === 'object' && !Array.isArray(tiers);
                         return (
-                          <div key={cat} className="space-y-3 p-3.5 bg-slate-950 rounded-xl border border-slate-855">
+                          <div key={cat} className="space-y-3 p-3.5 bg-slate-955 rounded-xl border border-slate-855">
                             <div className="flex items-center space-x-2 border-b border-slate-800/60 pb-1 mb-2">
                               {renderJobIcon(cat === '法師' ? '主教' : (cat === '劍士' ? '英雄' : (cat === '弓箭手' ? '箭神' : (cat === '盜賊' ? '夜使者' : '拳霸'))), "w-4 h-4")}
                               <span className="font-extrabold text-indigo-300 text-sm">{cat}</span>
@@ -3943,7 +3982,7 @@
                           const chars = u.characters || [{ ign: u.ign, job: u.job, level: u.level }];
                           const activeChar = chars[u.activeCharacterIndex || 0] || chars[0] || { ign: '未知', job: '未知', level: 120 };
                           return (
-                            <div key={u.id} className="bg-slate-950/85 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                            <div key={u.id} className="bg-slate-955 p-3.5 rounded-xl border border-slate-800 space-y-2">
                               <div className="flex items-center justify-between">
                                 <span className="font-bold text-slate-200 text-sm">👤 用戶身分 ({chars.length} 個角色)</span>
                                 <button
@@ -3995,7 +4034,7 @@
 
                   {/* 🛡️ 右側欄位：資料庫維護 ＋ Discord OAuth2 與 Webhook 系統設定 👑 */}
                   <div className="space-y-6">
-                    <div className="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4 font-semibold">
+                    <div className="p-5 bg-slate-955 border border-slate-800 rounded-2xl space-y-4 font-semibold">
                       <h4 className="font-extrabold text-sm text-indigo-400 flex items-center gap-1.5">
                         <span>🛡️ Discord 登入整合設定</span>
                       </h4>
@@ -4097,7 +4136,7 @@
                       </form>
                     </div>
 
-                    <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-855 space-y-3 font-semibold font-bold">
+                    <div className="p-4 bg-slate-955/60 rounded-xl border border-slate-855 space-y-3 font-semibold font-bold">
                       <h4 className="font-bold text-sm text-slate-200">⚠️ 資料庫與連線維護</h4>
                       <p className="text-xs text-slate-400 leading-relaxed">
                         如果您不小心更動或貼錯了 Firebase 的 Config 造成網頁連線死當，可以按下下方按鈕將其抹除。
@@ -4124,7 +4163,7 @@
 
           {/* E. 通用 React 自訂確認對話視窗 */}
           {confirmModal.isOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl font-semibold font-bold">
                 <h3 className="text-lg font-bold text-rose-400">⚠️ 系統確認</h3>
                 <p className="text-sm font-semibold text-slate-100 mt-2">{confirmModal.title}</p>
@@ -4155,22 +4194,22 @@
                 </div>
                 
                 <div className="py-6 space-y-4 text-sm">
-                  <div className="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-855">
+                  <div className="flex items-center justify-between p-3 bg-slate-955 rounded-xl border border-slate-855">
                     <span className="text-slate-400">遊戲 ID (IGN)</span>
                     <span className="text-white text-base font-black select-text">{voterDetailModal.voter.ign}</span>
                   </div>
-                  <div className="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-855">
+                  <div className="flex items-center justify-between p-3 bg-slate-955 rounded-xl border border-slate-855">
                     <span className="text-slate-400">當前職業</span>
                     <span className="text-indigo-400 font-black flex items-center space-x-1.5 select-none">
                       {renderJobIcon(voterDetailModal.voter.job, "w-4 h-4")}
                       <span>{voterDetailModal.voter.job}</span>
                     </span>
                   </div>
-                  <div className="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-855">
+                  <div className="flex items-center justify-between p-3 bg-slate-955 rounded-xl border border-slate-855">
                     <span className="text-slate-400">角色等級</span>
                     <span className="text-white font-mono text-base font-bold select-none">Lv. {voterDetailModal.voter.level || '?'}</span>
                   </div>
-                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-855 space-y-2">
+                  <div className="p-3 bg-slate-955 rounded-xl border border-slate-855 space-y-2">
                     <span className="text-slate-400 block text-xs select-none">💬 角色詳細備註 / 狀態說明</span>
                     <div className="text-amber-300 text-sm leading-relaxed whitespace-pre-wrap bg-slate-900/60 p-3 rounded-lg border border-slate-800/80 min-h-[80px] font-sans font-medium">
                       {voterDetailModal.voter.memo || '本角色尚無填寫出團備註。'}
