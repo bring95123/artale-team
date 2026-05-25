@@ -88,6 +88,41 @@
       }
     };
 
+    // =========================================================================
+    // 🔮 轉蛋幸運池與運勢資料庫 (Maple Fortune Pools)
+    // =========================================================================
+    const GACHA_FORTUNES = [
+      { status: '🌟 【神之狂熱】超大吉！', color: 'from-yellow-400 to-amber-500 bg-amber-500/10 text-amber-300 border-amber-400/40', dcColor: 16766720, desc: '今天氣運沖天！衝捲必過，打寶率提升 999%！Pink Bean 看到你都瑟瑟發抖，請直接點 10% 捲！' },
+      { status: '🟢 【歐氣滿滿】大吉', color: 'from-emerald-500 to-teal-650 bg-emerald-500/10 text-emerald-400 border-emerald-400/40', dcColor: 3066993, desc: '諸事皆宜，出團隨手撿到頂級母書與裝備，點捲成功機率大增。快去多扶老奶奶過馬路維持歐氣！' },
+      { status: '🔵 【春風得意】中吉', color: 'from-blue-500 to-indigo-600 bg-blue-500/10 text-blue-400 border-blue-400/30', dcColor: 3447003, desc: '平穩進步的幸運日，適合與老戰友一起組隊推拉圖斯，走位靈活不容易發生地圖事故。' },
+      { status: '⚪ 【清爽舒暢】吉', color: 'from-slate-400 to-slate-600 bg-slate-500/10 text-slate-300 border-slate-500/20', dcColor: 10197915, desc: '運勢良好，野外打怪掉寶率穩定。雖然不會一夜暴富，但今天會有小驚喜。' },
+      { status: '🟡 【平穩修行】末吉', color: 'from-orange-400 to-amber-600 bg-orange-500/10 text-amber-500 border-orange-500/20', dcColor: 15105570, desc: '今日衝裝有小機率爆炸！推薦使用 60% 捲求穩，或者把素材先屯在倉庫，今天不宜與機率對賭。' },
+      { status: '🟣 【靜心放空】平', color: 'from-purple-500 to-slate-700 bg-purple-500/10 text-purple-400 border-purple-500/20', dcColor: 10181046, desc: '不痛不癢的一天，適合發呆聊天。今天去帶帶公會新手，或在市場當稱職的商人吧！' },
+      { status: '💀 【水逆退散】凶', color: 'from-red-600 to-rose-950 bg-red-500/10 text-rose-500 border-red-500/30', dcColor: 15158332, desc: '今日衝捲必爆、挑戰 Boss 必被誘惑！強烈建議今天乖乖當個吹風機發呆，別碰任何機率裝備！' }
+    ];
+
+    const GACHA_CHANNELS = [
+      'CH 1 - 鬧區頻道 (吸取全服歐氣，玄學衝裝首選)',
+      'CH 3 - 幽靜清閒頻 (無人打擾，打寶致富好地方)',
+      'CH 5 - 幸運單數頻 (自帶機率玄學加成)',
+      'CH 8 - 發發發諧音頻 (楓幣大亨最愛駐紮地)',
+      'CH 10 - 十全十美頻 (傷害數值最漂亮)',
+      'CH 13 - 逆天改命頻 (適合非酋翻身挑戰極限)',
+      'CH 17 - 奇蹟頻 (據說神蹟總是在此頻道誕生)',
+      'CH 20 - 終點站頻 (絕處逢生、驚喜不斷的神秘頻道)'
+    ];
+
+    const GACHA_SPOTS = [
+      '墮落城市下水道 🪠 (聽著BGM與達克魯斯一同冥想)',
+      '弓箭手村計程車旁 🚕 (最經典的養老與發呆吸歐氣聖地)',
+      '玩具城時間通道 ⏰ (時間倒流，修正非酋運氣)',
+      '天空之城塔頂 ☁️ (最接近女神的地方，風水極佳)',
+      '勇士之村麥吉身旁 ⚔️ (在烈日鐵血中淬鍊神兵利器)',
+      '冰原雪域長老公館 ❄️ (寒風刺骨，讓頭腦保持最清醒的點捲狀態)',
+      '神木村大樹頂端 🌳 (吸收世界之樹的自然靈氣精華)',
+      '水世界皮亞奴斯洞穴 🐟 (深海沉靜，阻絕一切厄運喧囂)'
+    ];
+
     // 時間格式化輔助函數
     const formatDateTime = (dateTimeStr) => {
       if (!dateTimeStr) return '';
@@ -217,6 +252,10 @@
       const [isChatOpen, setIsChatOpen] = useState(false); // 控制浮動聊天室是否開啟的 state
       const [isChatMaximized, setIsChatMaximized] = useState(false); // 控制聊天視窗是否放大至全螢幕的 state
       const chatContainerRef = useRef(null); // 精準控管討論區內滾動
+
+      // 🔮 幸運轉蛋狀態區
+      const [gachaResult, setGachaResult] = useState(null);
+      const [isSpinning, setIsSpinning] = useState(false);
 
       // 💡 DC 未讀時間段智慧追蹤
       const [lastReadTimes, setLastReadTimes] = useState(() => {
@@ -1031,6 +1070,113 @@
         );
       };
 
+      // ==========================================
+      // 🔮 幸運轉蛋核心控制邏輯
+      // ==========================================
+      const handleSpinGacha = () => {
+        if (!activeCharacter.ign) {
+          showToast("⚠️ 請先設定右上角的身分角色卡才能啟用轉蛋！", "error");
+          setShowProfileModal(true);
+          return;
+        }
+
+        setIsSpinning(true);
+        setGachaResult(null);
+
+        // 模擬拉霸滾動效果
+        let count = 0;
+        const interval = setInterval(() => {
+          const randomFortune = GACHA_FORTUNES[Math.floor(Math.random() * GACHA_FORTUNES.length)];
+          const randomChannel = GACHA_CHANNELS[Math.floor(Math.random() * GACHA_CHANNELS.length)];
+          const randomSpot = GACHA_SPOTS[Math.floor(Math.random() * GACHA_SPOTS.length)];
+
+          setGachaResult({
+            fortune: randomFortune,
+            channel: randomChannel,
+            spot: randomSpot
+          });
+
+          count++;
+          if (count > 15) { // 滾動次數
+            clearInterval(interval);
+            
+            // 決定最終幸運結果
+            const finalFortune = GACHA_FORTUNES[Math.floor(Math.random() * GACHA_FORTUNES.length)];
+            const finalChannel = GACHA_CHANNELS[Math.floor(Math.random() * GACHA_CHANNELS.length)];
+            const finalSpot = GACHA_SPOTS[Math.floor(Math.random() * GACHA_SPOTS.length)];
+
+            setGachaResult({
+              fortune: finalFortune,
+              channel: finalChannel,
+              spot: finalSpot
+            });
+            setIsSpinning(false);
+            showToast("🔮 今日好運轉蛋抽取完成！快秀出運勢給公會吧！");
+          }
+        }, 80);
+      };
+
+      // 📢 傳送今日運勢圖文卡片至 Discord 👑
+      const handleSendFortuneToDiscord = async () => {
+        if (!gachaResult) return;
+        if (!discordConfig || !discordConfig.webhookUrl) {
+          showToast("⚠️ 請先在底部的管理者後台配置 Discord Webhook URL！", "error");
+          return;
+        }
+
+        const dcTag = discordUser ? `<@${discordUser.id}>` : '';
+        const authorName = activeCharacter.ign;
+        const job = activeCharacter.job;
+        const level = activeCharacter.level;
+        
+        const payload = {
+          content: `🔮 **楓之谷今日幸運求籤** ${dcTag} 推開了命運神社的門扉...`,
+          embeds: [{
+            title: `🍁 NyxShade 遠征幸運轉蛋報告 🔮`,
+            description: `冒險者 **${authorName}** (${job} Lv.${level}) 的今日好運籤已經出爐！`,
+            color: gachaResult.fortune.dcColor,
+            fields: [
+              {
+                name: "✨ 今日吉凶與運勢",
+                value: `**${gachaResult.fortune.status}**\n*${gachaResult.fortune.desc}*`,
+                inline: false
+              },
+              {
+                name: "📍 幸運打寶頻道",
+                value: `**${gachaResult.channel}**`,
+                inline: true
+              },
+              {
+                name: "🔨 最佳衝裝聖地",
+                value: `**${gachaResult.spot}**`,
+                inline: true
+              }
+            ],
+            footer: {
+              text: "NyxShade 命運神宮 • 壞掉不要找我喔 ✧｡٩(ˊᗜˋ)و✧｡"
+            },
+            timestamp: new Date().toISOString()
+          }]
+        };
+
+        try {
+          const response = await fetch(discordConfig.webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (response.ok) {
+            showToast("📢 成功將今日超狂運勢大方地秀到 Discord 頻道！");
+          } else {
+            throw new Error("Discord API 拒絕了發送請求");
+          }
+        } catch (err) {
+          console.error(err);
+          showToast("發送至 Discord 失敗，請確認 Webhook URL 網址是否正確！", "error");
+        }
+      };
+
       // 💡 管理員新增自訂 Boss
       const handleCreateCustomBoss = async (e) => {
         e.preventDefault();
@@ -1297,7 +1443,7 @@
         }
       };
 
-      // 💡 管理員一鍵剃除已經投票者的投票紀錄
+      // 💡 管理員一鍵將確定時間公告廣播與自動標記至 Discord 👑
       const handleRemoveVote = (raidId, targetUserId, targetIgn, targetJob) => {
         triggerConfirm(
           "確定要剃除此投票紀錄嗎？",
@@ -1687,7 +1833,7 @@
                       </span>
                       <h2 className="text-3xl md:text-4xl font-black mt-4 text-white">Artale 遠征隊組隊</h2>
                       <p className="text-slate-400 mt-2.5 text-base md:text-lg whitespace-pre-line leading-relaxed">
-                        支援多身分角色與 Discord 驗證登入！跨電腦、防快取清除，角色卡永不遺失。
+                        多身分角色與 Discord 驗證登入！
                       </p>
                       <div className="mt-6 flex flex-wrap gap-3">
                         {isAdminLoggedIn && (
@@ -1725,6 +1871,102 @@
                         </button>
                       </div>
                     </div>
+                  </div>
+
+                  {/* 🔮 楓之谷幸運神社 - 轉蛋系統 (新功能加載 🌟) */}
+                  <div className="mb-8 p-6 rounded-3xl bg-gradient-to-br from-indigo-950/40 via-slate-900 to-slate-950 border border-indigo-500/25 shadow-xl relative overflow-hidden">
+                    <div className="absolute right-4 top-4 opacity-10 text-7xl select-none">🔮</div>
+                    
+                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-indigo-900/40 pb-4 mb-5">
+                      <div>
+                        <span className="text-[10px] bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 px-2.5 py-1 rounded-md font-extrabold select-none">
+                          MAPLE GACHA
+                        </span>
+                        <h3 className="text-xl font-black text-slate-100 flex items-center gap-2 mt-1.5">
+                          <span>🔮 楓之谷幸運神社</span>
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-1">
+                          立刻來抽一發幸運神籤，看看今日衝裝與打寶運勢！
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 w-full md:w-auto shrink-0">
+                        <button
+                          onClick={handleSpinGacha}
+                          disabled={isSpinning}
+                          className="flex-1 md:flex-none bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 disabled:from-slate-800 disabled:to-slate-900 text-white font-black px-6 py-3 rounded-xl shadow-md transition transform hover:-translate-y-0.5 active:scale-95 disabled:scale-100 disabled:translate-y-0 text-sm flex items-center justify-center space-x-2"
+                        >
+                          {isSpinning ? (
+                            <span className="flex items-center space-x-1.5">
+                              <span className="animate-spin inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full"></span>
+                              <span>神宮加持求籤中...</span>
+                            </span>
+                          ) : (
+                            <>
+                              <span>🎰 抽取今日好運轉蛋</span>
+                            </>
+                          )}
+                        </button>
+
+                        {gachaResult && !isSpinning && discordConfig?.webhookUrl && (
+                          <button
+                            onClick={handleSendFortuneToDiscord}
+                            className="bg-[#5865F2] hover:bg-[#4752C4] text-white font-black px-5 py-3 rounded-xl text-sm transition transform hover:-translate-y-0.5 active:scale-95 shadow-md flex items-center justify-center space-x-1.5 shrink-0 animate-pulse"
+                            title="將此好運勢以精美卡片發送到 Discord 頻道！"
+                          >
+                            <span>📢 秀運勢到 DC</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 轉蛋顯示結果卡片區 */}
+                    {gachaResult ? (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-4 duration-350">
+                        {/* 今日吉凶卡 */}
+                        <div className={`p-4 rounded-2xl border transition bg-gradient-to-br ${gachaResult.fortune.color} flex flex-col justify-between shadow-lg`}>
+                          <div>
+                            <span className="text-[10.5px] font-bold text-white/70 block uppercase tracking-wide">TODAY STATUS</span>
+                            <h4 className="text-lg font-black text-white mt-1 drop-shadow-md">{gachaResult.fortune.status}</h4>
+                          </div>
+                          <p className="text-xs text-white/90 leading-relaxed mt-4 bg-black/30 p-2.5 rounded-xl border border-white/10">
+                            {gachaResult.fortune.desc}
+                          </p>
+                        </div>
+
+                        {/* 幸運頻道卡 */}
+                        <div className="p-4 rounded-2xl border border-slate-800 bg-slate-950/65 flex flex-col justify-between shadow-lg">
+                          <div>
+                            <span className="text-[10.5px] font-bold text-slate-500 block uppercase tracking-wide">LUCKY CHANNEL</span>
+                            <h4 className="text-base font-black text-indigo-400 mt-1 flex items-center space-x-1.5">
+                              <span>🎰</span>
+                              <span className="truncate">{gachaResult.channel.split(' - ')[0]}</span>
+                            </h4>
+                          </div>
+                          <p className="text-xs text-slate-300 leading-relaxed mt-4 bg-slate-900/70 p-2.5 rounded-xl border border-slate-800">
+                            {gachaResult.channel}
+                          </p>
+                        </div>
+
+                        {/* 最佳衝裝聖地卡 */}
+                        <div className="p-4 rounded-2xl border border-slate-800 bg-slate-950/65 flex flex-col justify-between shadow-lg">
+                          <div>
+                            <span className="text-[10.5px] font-bold text-slate-500 block uppercase tracking-wide">BEST UPGRADE SPOT</span>
+                            <h4 className="text-base font-black text-amber-400 mt-1 flex items-center space-x-1.5">
+                              <span>🔨</span>
+                              <span className="truncate">衝裝首選聖地</span>
+                            </h4>
+                          </div>
+                          <p className="text-xs text-slate-300 leading-relaxed mt-4 bg-slate-900/70 p-2.5 rounded-xl border border-slate-800">
+                            {gachaResult.spot}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="border border-dashed border-slate-800 rounded-2xl p-8 text-center text-slate-500 text-xs italic bg-slate-950/20 select-none">
+                        🔮 還沒有求籤喔！請點選上方「🎰 抽取今日好運轉蛋」啟動運勢預測。
+                      </div>
+                    )}
                   </div>
 
                   {/* 我的出團日程 Dashboard */}
@@ -1871,7 +2113,7 @@
                 /* 2. 遠征隊詳細主控台 */
                 <div className="space-y-6 max-w-4xl mx-auto">
                   
-                  {/* ⬅️ 返回大廳首頁按鈕（新加入 🌟） */}
+                  {/* ⬅️ 返回大廳首頁按鈕 */}
                   <div className="flex items-center">
                     <button
                       onClick={() => setCurrentRaidId(null)}
@@ -2360,7 +2602,7 @@
                                           <span className="font-black text-slate-100 text-[17px] break-all whitespace-normal select-text leading-tight" title={p.ign}>{p.ign}</span>
                                         </div>
 
-                                        {/* 名冊欄位上完美融入 Discord 身分卡 👑 */}
+                                        {/* 完美融入 Discord 身分卡 👑 */}
                                         {p.discord && (
                                           <span className="inline-flex items-center space-x-1 bg-[#5865F2]/10 border border-[#5865F2]/30 px-2 py-0.5 rounded-lg text-[10px] font-black text-indigo-300 shadow shrink-0">
                                             <img src={p.discord.avatar} className="w-4 h-4 rounded-full object-cover" />
@@ -3049,7 +3291,7 @@
                   登錄多個遊戲身分。連結 Discord 帳號，角色卡與出團紀錄自動雲端備份漫遊！
                 </p>
 
-                {/* 🛡️ Discord 連結身分卡面板 (完美修復高度與排版 Bug 👑) */}
+                {/* 🛡️ Discord 連結身分卡面板 */}
                 <div className="mb-6 font-semibold">
                   {discordUser ? (
                     <div className="flex items-center justify-between bg-slate-950 border border-indigo-500/20 p-4 rounded-2xl shadow-inner">
@@ -3193,7 +3435,7 @@
                                       updated[index].job = newJobs[0] || '未知';
                                       setTempCharacters(updated);
                                     }}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-xs text-slate-100 focus:outline-none cursor-pointer"
+                                    className="w-full bg-slate-955 border border-slate-800 rounded-lg px-2 py-2 text-xs text-slate-100 focus:outline-none cursor-pointer"
                                   >
                                     {Object.keys(jobCategories).map(cat => (
                                       <option key={cat} value={cat}>{cat}</option>
@@ -3213,7 +3455,7 @@
                                       updated[index].job = newJobs[0] || '未知';
                                       setTempCharacters(updated);
                                     }}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-xs text-slate-100 focus:outline-none cursor-pointer"
+                                    className="w-full bg-slate-955 border border-slate-800 rounded-lg px-2 py-2 text-xs text-slate-100 focus:outline-none cursor-pointer"
                                   >
                                     <option value="2轉">2轉 (Lv.30)</option>
                                     <option value="3轉">3轉 (Lv.70)</option>
@@ -3230,7 +3472,7 @@
                                       updated[index].job = e.target.value;
                                       setTempCharacters(updated);
                                     }}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-xs text-amber-400 font-extrabold focus:outline-none cursor-pointer"
+                                    className="w-full bg-slate-955 border border-slate-800 rounded-lg px-2 py-2 text-xs text-amber-400 font-extrabold focus:outline-none cursor-pointer"
                                   >
                                     {availableJobs.map(j => (
                                       <option key={j} value={j}>{j}</option>
@@ -3492,7 +3734,7 @@
                       <label className="block text-xs font-bold text-slate-400 mb-1.5">選擇轉職階段</label>
                       <select
                         value={newJobData.tier}
-                        onChange={(e) => setNewJobData({ ...newJobData, tier: e.target.value })}
+                        onChange={(e) => setNewJobData({ ...newJobData, category: e.target.value })}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 focus:outline-none text-slate-100 cursor-pointer"
                       >
                         <option value="2轉">2轉 (Lv.30)</option>
