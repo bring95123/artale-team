@@ -29,6 +29,45 @@ export function AdminConsoleModal({
 }: AdminConsoleProps) {
   const [registeredUsers, setRegisteredUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [newWebhookName, setNewWebhookName] = useState('');
+  const [newWebhookUrl, setNewWebhookUrl] = useState('');
+
+  const handleAddWebhook = () => {
+    if (!newWebhookName.trim() || !newWebhookUrl.trim()) {
+      showToast("請填寫 Webhook 頻道名稱和位址！", "error");
+      return;
+    }
+    if (!newWebhookUrl.trim().startsWith("https://")) {
+      showToast("Webhook 網址必須以 https:// 開頭！", "error");
+      return;
+    }
+    const currentWebhooks = discordConfig.webhooks || [];
+    const updatedWebhooks = [
+      ...currentWebhooks,
+      {
+        id: Date.now().toString(),
+        name: newWebhookName.trim(),
+        url: newWebhookUrl.trim()
+      }
+    ];
+    setDiscordConfig({
+      ...discordConfig,
+      webhooks: updatedWebhooks
+    });
+    setNewWebhookName('');
+    setNewWebhookUrl('');
+    showToast("成功載入該頻道！請記得點選下方「儲存 Discord 連線設定」！");
+  };
+
+  const handleDeleteWebhook = (id: string) => {
+    const currentWebhooks = discordConfig.webhooks || [];
+    const updatedWebhooks = currentWebhooks.filter(w => w.id !== id);
+    setDiscordConfig({
+      ...discordConfig,
+      webhooks: updatedWebhooks
+    });
+    showToast("已移除該 Webhook！請記得點選下方「儲存 Discord 連線設定」！");
+  };
 
   // Snyc registered users in background
   useEffect(() => {
@@ -249,21 +288,81 @@ export function AdminConsoleModal({
                   </div>
                 )}
 
-                {/* Webhook panel */}
-                <div className="border-t border-slate-800 pt-3 mt-3">
-                  <label className="block text-amber-400 mb-1 font-black">Discord Webhook URL (發送廣播與 @標記)</label>
-                  <input
-                    type="text"
-                    placeholder="在此貼上您 Discord 頻道的 Webhook 網址"
-                    value={discordConfig?.webhookUrl || ''}
-                    onChange={(e) => setDiscordConfig({ ...discordConfig, webhookUrl: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none font-mono placeholder-slate-650"
-                  />
+                 {/* Webhook panel */}
+                <div className="border-t border-slate-800 pt-3 mt-3 space-y-3">
+                  <div>
+                    <label className="block text-amber-500 mb-1 font-black">預設 Discord Webhook URL (通用廣播主要頻道)</label>
+                    <input
+                      type="text"
+                      placeholder="在此貼上您 Discord 頻道的 Webhook 網址"
+                      value={discordConfig?.webhookUrl || ''}
+                      onChange={(e) => setDiscordConfig({ ...discordConfig, webhookUrl: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-100 focus:outline-none font-mono placeholder-slate-650"
+                    />
+                  </div>
+
+                  <div className="border-t border-slate-800/65 pt-3 mt-2">
+                    <label className="block text-indigo-400 mb-1 font-black">🚀 自訂其它 Webhook 廣播頻道</label>
+                    <p className="text-[10px] text-slate-400 mb-2">可設定多個頻道 Webhook (例如 #求籤頻道、#閒聊、#打寶回報)，玩家抽籤完即可靈活選擇丟至指定频道！</p>
+                    
+                    {/* List of existing custom webhooks */}
+                    <div className="space-y-1.5 max-h-[140px] overflow-y-auto mb-3">
+                      {(!discordConfig?.webhooks || discordConfig.webhooks.length === 0) ? (
+                        <div className="text-[10px] text-slate-500 italic bg-slate-900 p-2 rounded text-center">
+                          尚無設定其他自訂頻道 Webhook
+                        </div>
+                      ) : (
+                        discordConfig.webhooks.map((wh) => (
+                          <div key={wh.id} className="flex items-center justify-between gap-2 bg-slate-900 p-2 rounded border border-slate-800/60 text-[11px]">
+                            <div className="truncate flex-1">
+                              <span className="font-bold text-amber-500 pr-1.5 bg-amber-500/10 px-1 py-0.5 rounded text-[10px]">#{wh.name}</span>
+                              <span className="font-mono text-slate-400 text-[9px] truncate">{wh.url}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteWebhook(wh.id)}
+                              className="text-xs text-rose-400 hover:text-rose-300 font-bold px-1.5 py-0.5 shrink-0"
+                              title="刪除此頻道"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Form to add a custom webhook */}
+                    <div className="bg-slate-900/40 p-2.5 rounded border border-dashed border-slate-800 space-y-2">
+                      <div className="grid grid-cols-3 gap-2">
+                        <input
+                          type="text"
+                          placeholder="頻道名稱 (例如: #幸運神社)"
+                          value={newWebhookName}
+                          onChange={(e) => setNewWebhookName(e.target.value)}
+                          className="col-span-1 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-slate-100"
+                        />
+                        <input
+                          type="text"
+                          placeholder="貼上完整 Webhook 連結"
+                          value={newWebhookUrl}
+                          onChange={(e) => setNewWebhookUrl(e.target.value)}
+                          className="col-span-2 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-slate-100 font-mono"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddWebhook}
+                        className="w-full bg-slate-850 hover:bg-slate-800 text-slate-200 border border-slate-700 py-1 rounded text-[10.5px] font-bold transition"
+                      >
+                        ➕ 暫存並加入自訂清單
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="bg-slate-900/60 p-2.5 rounded border border-slate-800 text-[10px] text-slate-500 leading-relaxed font-bold">
                   <strong className="text-amber-500">📌 Webhook 廣播使用：</strong>
-                  <p>填寫 Webhook 後，當確定出團時間或排班完成後即可一擊公告至 Discord！</p>
+                  <p>填寫 Webhook 後，點選最下方「儲存 Discord 連線設定」保存。當排班或神殿抽獎完成後，即可隨心所欲地一鍵廣播！</p>
                 </div>
 
                 <button

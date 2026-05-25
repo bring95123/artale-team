@@ -1888,7 +1888,7 @@ export default function App() {
 
               <div className="p-3 bg-amber-500/5 rounded-xl border border-amber-500/10 text-[10px] text-amber-300 leading-relaxed font-bold">
                 <span className="font-bold">💡 貼心提醒：</span><br />
-                本系統目前預設管理帳號為 <code className="bg-slate-955 px-1 py-0.5 rounded font-mono text-[10px] bg-slate-950 text-slate-100">admin</code>，密碼為 <code className="bg-slate-955 px-1 py-0.5 rounded font-mono text-[10px] bg-slate-950 text-slate-100">nyxshade</code>.
+                本系統目前預設管理帳號為 <code className="bg-slate-955 px-1 py-0.5 rounded font-mono text-[10px] bg-slate-950 text-slate-100">***</code>，密碼為 <code className="bg-slate-955 px-1 py-0.5 rounded font-mono text-[10px] bg-slate-950 text-slate-100">***</code>.
               </div>
 
               <button type="submit" className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2.5 rounded-xl transition active:scale-95 shadow">核對密碼並登入</button>
