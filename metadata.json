@@ -1,0 +1,6 @@
+{
+  "name": "NyxShade Expedition Party System",
+  "description": "A high-fidelity MapleStory (MSR Artale) team builder and fortune gacha application for NyxShade guild expeditions, supporting multiple characters, realtime chat, and Discord integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
