@@ -1140,17 +1140,30 @@ export default function EquipScrollSimulator({ showToast }: { showToast: (msg: s
                 </div>
 
                 {/* Big Scrolling Trigger Buttons */}
-                <div className="w-full mt-5 select-none z-10">
+                <div className="w-full mt-5 select-none z-10 flex flex-col sm:flex-row gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetToPreset(selectedPresetIdx);
+                      showToast('🧼 裝備、進度與衝卷日誌已一鍵重置歸零！', 'info');
+                    }}
+                    className="px-4 py-3 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-rose-400 font-extrabold text-xs rounded-xl transition flex items-center justify-center space-x-1.5 shrink-0 active:scale-95"
+                    title="一鍵重置裝備數據與進度"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>一鍵重置裝備</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={executeScrollSingle}
                     disabled={isCursing || activeItem.slotsRemaining === 0}
-                    className={`w-full py-3.5 rounded-xl text-sm font-black transition duration-300 shadow-lg active:scale-[0.98] transform flex items-center justify-center space-x-2 ${
+                    className={`flex-1 py-3 px-2 rounded-xl text-xs sm:text-sm font-black transition duration-300 shadow-lg active:scale-[0.98] transform flex items-center justify-center space-x-2 ${
                       activeItem.slotsRemaining === 0 
                         ? 'bg-slate-800 border border-slate-750 text-slate-500 cursor-not-allowed'
                         : currentScroll?.isDark
-                        ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-700 hover:to-amber-600 border border-amber-450/40 text-slate-950 shadow-amber-500/10'
-                        : 'bg-indigo-600 hover:bg-indigo-700 hover:border-indigo-550 text-white shadow-indigo-500/10'
+                        ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-700 hover:to-amber-600 border border-amber-450/40 text-slate-950 shadow-amber-500/10 shadow-md'
+                        : 'bg-indigo-600 hover:bg-indigo-700 hover:border-indigo-550 text-white shadow-indigo-500/10 shadow-md'
                     }`}
                   >
                     {isCursing ? (
@@ -1299,9 +1312,21 @@ export default function EquipScrollSimulator({ showToast }: { showToast: (msg: s
               {/* Highlight metrics panel */}
               <div className="lg:col-span-4 space-y-4">
                 <div className="bg-slate-950 p-5 rounded-2xl border border-slate-850 space-y-4.5 select-none">
-                  <h4 className="text-xs font-black text-indigo-400 uppercase tracking-wider border-b border-slate-900 pb-2">
-                    🎯 推算成果摘要 (Summary)
-                  </h4>
+                  <div className="flex items-center justify-between border-b border-slate-900 pb-2">
+                    <h4 className="text-xs font-black text-indigo-400 uppercase tracking-wider">
+                      🎯 推算成果摘要 (Summary)
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBatchResults(null);
+                        showToast('🧼 批次量產推算大數據已一鍵清空重置！', 'info');
+                      }}
+                      className="px-2 py-1 bg-rose-950/40 hover:bg-rose-900/45 border border-rose-900/30 text-rose-300 hover:text-white rounded-lg text-[10px] font-black transition flex items-center space-x-1 active:scale-95"
+                    >
+                      <span>🧼 一鍵重置數據</span>
+                    </button>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-3.5">
                     <div className="p-3 bg-slate-900/40 border border-slate-850 rounded-xl text-center">
