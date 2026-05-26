@@ -30,6 +30,23 @@ export default function GachaSection({
   const [wishingNote, setWishingNote] = useState('');
   const [showDashboard, setShowDashboard] = useState(false);
 
+  // Automatically set default webhook to '#聊天大廳' if available
+  useEffect(() => {
+    if (discordConfig?.webhooks && discordConfig.webhooks.length > 0) {
+      const chatLoungeWebhook = discordConfig.webhooks.find(wh => {
+        const normalized = wh.name.replace('#', '').trim();
+        return normalized === '聊天大廳';
+      });
+      if (chatLoungeWebhook) {
+        setSelectedWebhookId(chatLoungeWebhook.id);
+      } else {
+        setSelectedWebhookId('default');
+      }
+    } else {
+      setSelectedWebhookId('default');
+    }
+  }, [discordConfig]);
+
   // Check if daily reset has passed (08:00 AM)
   const checkHasResetPassed = (lastTimeMs: number) => {
     const lastDate = new Date(lastTimeMs);

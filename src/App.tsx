@@ -30,6 +30,8 @@ import { ProfileModal, BossManagerModal, JobManagerModal, VoterDetailModal } fro
 import { AdminConsoleModal } from './components/AdminConsole';
 import SynergyAnalyzer from './components/SynergyAnalyzer';
 import FortuneDashboard from './components/FortuneDashboard';
+import EquipScrollSimulator from './components/EquipScrollSimulator';
+import StatCalculator from './components/StatCalculator';
 
 // Helper to format date times beautifully
 const formatDateTime = (dateTimeStr: string) => {
@@ -82,6 +84,7 @@ export default function App() {
   const [raids, setRaids] = useState<any[]>([]);
   const [fortunes, setFortunes] = useState<any[]>([]);
   const [currentRaidId, setCurrentRaidId] = useState<string | null>(null);
+  const [lobbyTab, setLobbyTab] = useState<'recruitment' | 'simulator' | 'gacha' | 'calculator'>('recruitment');
 
   const [profile, setProfile] = useState<Profile>({
     activeCharacterIndex: 0,
@@ -1056,17 +1059,40 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Fortune Gacha Section */}
-              <GachaSection 
-                activeCharacter={activeCharacter}
-                discordUser={discordUser}
-                discordConfig={discordConfig}
-                showToast={showToast}
-                openProfileModal={() => setShowProfileModal(true)}
-                onSaveFortune={handleSaveGachaFortune}
-                fortunesList={fortunes}
-                customUid={customUid}
-              />
+              {/* Lobby Tabs Picker */}
+              <div className="flex flex-wrap md:flex-nowrap bg-slate-900 border border-slate-800 p-1.5 rounded-2xl mb-8 max-w-2xl select-none gap-1">
+                <button
+                  type="button"
+                  onClick={() => setLobbyTab('recruitment')}
+                  className={`flex-1 min-w-[120px] py-2.5 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${lobbyTab === 'recruitment' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  <span>📢 遠征招募大廳</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLobbyTab('simulator')}
+                  className={`flex-1 min-w-[120px] py-2.5 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${lobbyTab === 'simulator' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  <span>🔨 衝裝模擬器</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLobbyTab('gacha')}
+                  className={`flex-1 min-w-[120px] py-2.5 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${lobbyTab === 'gacha' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  <span>🔮 幸運神社</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLobbyTab('calculator')}
+                  className={`flex-1 min-w-[120px] py-2.5 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${lobbyTab === 'calculator' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  <span>📊 屬性計算器</span>
+                </button>
+              </div>
+
+              {lobbyTab === 'recruitment' && (
+                <>
 
               {/* Active user schedules dashboard */}
               {activeCharacter.ign && (
@@ -1206,6 +1232,29 @@ export default function App() {
                     );
                   })}
                 </div>
+              )}
+                </>
+              )}
+
+              {lobbyTab === 'simulator' && (
+                <EquipScrollSimulator showToast={showToast} />
+              )}
+
+              {lobbyTab === 'gacha' && (
+                <GachaSection 
+                  activeCharacter={activeCharacter}
+                  discordUser={discordUser}
+                  discordConfig={discordConfig}
+                  showToast={showToast}
+                  openProfileModal={() => setShowProfileModal(true)}
+                  onSaveFortune={handleSaveGachaFortune}
+                  fortunesList={fortunes}
+                  customUid={customUid}
+                />
+              )}
+
+              {lobbyTab === 'calculator' && (
+                <StatCalculator />
               )}
             </div>
           ) : (

@@ -61,8 +61,6 @@ export default function SynergyAnalyzer({
   showToast
 }: SynergyAnalyzerProps) {
   const [activeTab, setActiveTab] = useState<string>('all');
-  const [optimizerPreview, setOptimizerPreview] = useState<Participant[] | null>(null);
-  const [isApplying, setIsApplying] = useState(false);
 
   // Filter actual active participants in lists
   const party1List = useMemo(() => participants.filter(p => p.party === '1' && !p.isPlaceholder), [participants]);
@@ -275,147 +273,12 @@ export default function SynergyAnalyzer({
       list.push(`❤️ 滅團高危警告：挑戰高難重案王 **${boss.name}** 生存壓力極大！隊中有皮脆紙防的盜賊與弓手，但**全主力隊均無【黑騎士】提供神聖之火 (HB)**，極易陷入大絕招直接空手秒殺的慘劇。`);
     }
 
-    // 4. Buccaneer speed synergy
-    const buccaneers = participants.filter(p => p.party !== 'reserve' && isSpeedBuccaneer(p.job));
-    buccaneers.forEach(b => {
-      const partyList = b.party === '1' ? party1List : b.party === '2' ? party2List : party3List;
-      const physicals = partyList.filter(p => p.job !== b.job && !isBishopPriest(p.job));
-      if (physicals.length === 0) {
-        list.push(`⚡ 領域空放：【拳霸：${b.ign}】被單獨分在一隊，或者同隊缺少主力物理輸出，這讓 Speed Infusion (極速領域) 的攻擊速度增幅無處發揮！`);
-      }
-    });
-
-    // 5. Perfect synergy combinations detection!
-    if (party1List.some(p => isBishopPriest(p.job)) && party1List.some(p => isSharpBowman(p.job)) && party1List.some(p => p.job === '夜使者')) {
-      list.push(`👑 完美狂暴組合：**遠征一隊 成功集結了【主教 Healer + 會心射手 + 夜使者輸出】**！已激發「終極物理會心狂暴組合」，是全隊的核心輸出重炮。`);
-    }
-    if (partyCount >= 2 && party2List.some(p => isBishopPriest(p.job)) && party2List.some(p => isSharpBowman(p.job)) && party2List.some(p => p.job === '夜使者')) {
-      list.push(`👑 完美狂暴組合：**遠征二隊 已啟動「終極物理會心爆擊迴路」**！組隊設計非常有水準！`);
-    }
-
     if (list.length === 0) {
       list.push("🏅 陣容無懈可擊！成員各歸其位，Buff 完全覆蓋，請指揮官直接帶隊碾壓 Boss 吧！");
     }
 
     return list.slice(0, 4); // return top 4 smart actionable alerts
   }, [participants, party1List, party2List, party3List, reservesList, partyCount, boss]);
-
-  // Balance Optimization Algorithm (Heuristic)
-  const generateOptimalLayout = () => {
-    // 1. Gather all participants who are currently active (not placeholder, not reserves, or can be rearranged)
-    // Actually we want to redistribute all non-placeholder players among active squads, filling Party 1, 2, 3 first.
-    const realPlayers = participants.filter(p => !p.isPlaceholder);
-    if (realPlayers.length === 0) {
-      showToast("⚠️ 目前並無報名角色可進行最佳化排班！", "error");
-      return;
-    }
-
-    // Bucket players into major core buffs:
-    const bishops = realPlayers.filter(p => isBishopPriest(p.job));
-    const spearmen = realPlayers.filter(p => isDarkSpearman(p.job));
-    const bowmen = realPlayers.filter(p => isSharpBowman(p.job));
-    const buccaneers = realPlayers.filter(p => isSpeedBuccaneer(p.job));
-
-    // Special utilities list
-    const cores = [...bishops, ...spearmen, ...bowmen, ...buccaneers];
-    const coreIds = new Set(cores.map(p => `${p.userId}-${p.ign}-${p.job}`));
-
-    // Others (high DPS, levels sorted)
-    const others = realPlayers.filter(p => !coreIds.has(`${p.userId}-${p.ign}-${p.job}`))
-                              .sort((a, b) => b.level - a.level); // sort others by level (protect high tier DPS)
-
-    // Clear parties list
-    const optimized: Participant[] = [];
-    const partyCap = 6;
-    
-    // We will distribute characters into Party 1, 2, 3 sequentially
-    const parties: Participant[][] = Array.from({ length: partyCount }, () => []);
-
-    // Helper: find party with least count that doesn't have a buff category yet
-    const distributeToParties = (players: Participant[], categoryChecker: (j: string) => boolean) => {
-      players.forEach(player => {
-        // Find an available party (under cap 6) that does NOT have this category yet
-        let targetIdx = -1;
-        
-        // 1st pass: find a party that doesn't have this buff and is under limit
-        for (let i = 0; i < partyCount; i++) {
-          if (parties[i].length < partyCap && !parties[i].some(p => categoryChecker(p.job))) {
-            targetIdx = i;
-            break;
-          }
-        }
-
-        // 2nd pass: if all parties already have this buff, find smallest party that is under limit
-        if (targetIdx === -1) {
-          let minLen = 999;
-          for (let i = 0; i < partyCount; i++) {
-            if (parties[i].length < partyCap && parties[i].length < minLen) {
-              minLen = parties[i].length;
-              targetIdx = i;
-            }
-          }
-        }
-
-        if (targetIdx !== -1) {
-          parties[targetIdx].push({ ...player, party: String(targetIdx + 1) });
-        } else {
-          // Send overflow to reserve
-          optimized.push({ ...player, party: 'reserve' });
-        }
-      });
-    };
-
-    // Distribute core slots to prevent overlap in individual teams:
-    distributeToParties(bishops, isBishopPriest);
-    distributeToParties(spearmen, isDarkSpearman);
-    distributeToParties(bowmen, isSharpBowman);
-    distributeToParties(buccaneers, isSpeedBuccaneer);
-
-    // Fill remaining party slots with Others, sorted by high-level first
-    const maxActiveUsers = partyCount * partyCap;
-    
-    others.forEach(player => {
-      // Find smallest active party under size 6
-      let targetIdx = -1;
-      let minLen = partyCap;
-      
-      for (let i = 0; i < partyCount; i++) {
-        if (parties[i].length < partyCap && parties[i].length < minLen) {
-          minLen = parties[i].length;
-          targetIdx = i;
-        }
-      }
-
-      if (targetIdx !== -1) {
-        parties[targetIdx].push({ ...player, party: String(targetIdx + 1) });
-      } else {
-        optimized.push({ ...player, party: 'reserve' });
-      }
-    });
-
-    // Merge and append optimized entities
-    for (let i = 0; i < partyCount; i++) {
-      optimized.push(...parties[i]);
-    }
-
-    setOptimizerPreview(optimized);
-    showToast("⚡ 已在下方為您渲染『智能星級相性排班』預覽方案！快對比看看吧 ➜", "info");
-  };
-
-  const applyOptimization = async () => {
-    if (!optimizerPreview || isApplying) return;
-    setIsApplying(true);
-    showToast("🔄 正在批次寫入 Firebase 資料庫並通知 Discord Webhook...", "info");
-    try {
-      await onApplyOptimization(optimizerPreview);
-      setOptimizerPreview(null);
-      showToast("🎉 已成功套用完美星級排班！玩家組隊已同步大變身！", "success");
-    } catch (e) {
-      showToast("套用排班時出錯", "error");
-    } finally {
-      setIsApplying(false);
-    }
-  };
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl space-y-6 select-none" id="expedition-synergy-room">
@@ -731,101 +594,6 @@ export default function SynergyAnalyzer({
           })()}
         </div>
       </div>
-
-      {/* ADMIN CONSOLE / CREATOR SMART OPTIMIZER CONTROLS */}
-      {isCreator && (
-        <div className="border-t border-slate-800 pt-5 mt-5 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 select-none">
-            <div>
-              <h4 className="text-xs font-black text-indigo-400 flex items-center gap-1.5 uppercase">
-                <span>⚡ 遠征相性智慧優化調度演算法</span>
-              </h4>
-              <p className="text-[10px] text-slate-500 mt-1">
-                點擊一鍵進行智慧分組運算，將所有 Buff 角色與 Healer 平均分流至一、二、三隊，讓整體遠征隊戰力最大化。
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={generateOptimalLayout}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-black px-4 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 shadow transform hover:-translate-y-0.5 active:scale-95 transition"
-              >
-                <span>🪄 一鍵星級智能排班</span>
-              </button>
-              {optimizerPreview && (
-                <button
-                  type="button"
-                  onClick={() => setOptimizerPreview(null)}
-                  className="bg-slate-950 hover:bg-slate-900 border border-slate-850 text-slate-400 font-bold px-3 py-2.5 rounded-xl text-xs transition"
-                >
-                  清除預覽
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Optimizer Preview Section */}
-          {optimizerPreview && (
-            <div className="p-4 bg-slate-950 border border-indigo-500/40 rounded-2xl animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-4 shadow-lg ring-2 ring-indigo-505 ring-indigo-500/20">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-indigo-500/20 pb-3 gap-2">
-                <div>
-                  <h5 className="text-[13px] font-black text-amber-400 flex items-center gap-1.5">
-                    <span>✨ 星級極致排班：一鍵神級大調度 (預覽)</span>
-                  </h5>
-                  <p className="text-[10.5px] text-slate-400 mt-0.5">即將重新洗牌一、二、三隊與候補人員。預計將整體總體相性指数大幅提拉！</p>
-                </div>
-                <button
-                  type="button"
-                  disabled={isApplying}
-                  onClick={applyOptimization}
-                  className="bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-600 hover:to-yellow-500 text-slate-950 font-black px-4.5 py-2.5 rounded-xl text-xs shadow-md shadow-amber-500/10 active:scale-95 transform transition flex items-center space-x-1"
-                >
-                  {isApplying ? (
-                    <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-slate-950/40 border-t-slate-950 rounded-full"></span>
-                  ) : (
-                    <span>💾 套用並同步存檔</span>
-                  )}
-                </button>
-              </div>
-
-              {/* Side by side preview */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono select-none">
-                
-                {/* Before vs After preview mapping */}
-                <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-850 text-xs">
-                  <span className="text-[11px] font-bold text-rose-400 block mb-2">🔴 原有不規則分組狀態：</span>
-                  <div className="max-h-[160px] overflow-y-auto space-y-1.5 pr-1">
-                    {participants.filter(p => !p.isPlaceholder).map(p => (
-                      <div key={'bef-' + p.userId + '-' + p.ign} className="flex justify-between items-center text-[10.5px] bg-slate-950/40 px-2 py-1 rounded">
-                        <span className="text-slate-300 truncate max-w-[120px] font-semibold">{p.ign} <span className="text-[9px] text-slate-500">({p.job})</span></span>
-                        <span className="text-[9.5px] font-bold shrink-0 text-right">
-                          {p.party === '1' ? '🔵 1 隊' : p.party === '2' ? '🟢 2 隊' : p.party === '3' ? '🟣 3 隊' : '🔸 候補'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="p-3 bg-indigo-950/15 rounded-xl border border-indigo-500/20 text-xs">
-                  <span className="text-[11px] font-bold text-amber-400 block mb-2">🌟 智能演算法分流方案：</span>
-                  <div className="max-h-[160px] overflow-y-auto space-y-1.5 pr-1">
-                    {optimizerPreview.map(p => (
-                      <div key={'aft-' + p.userId + '-' + p.ign} className="flex justify-between items-center text-[10.5px] bg-indigo-950/45 border border-indigo-750/30 px-2 py-1 rounded">
-                        <span className="text-slate-100 truncate max-w-[120px] font-black">{p.ign} <span className="text-[9px] text-indigo-400">({p.job})</span></span>
-                        <span className="text-[9.5px] font-black text-amber-300 bg-amber-500/10 px-1 py-0.5 rounded shadow-sm">
-                          {p.party === '1' ? '🔵 最佳化 1 隊' : p.party === '2' ? '🟢 最佳化 2 隊' : p.party === '3' ? '🟣 最佳化 3 隊' : '🔸 預留候補'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
