@@ -291,6 +291,14 @@ const PRIMITIVE_ITEMS: EquipTemplate[] = [
     icon: '🎖️',
     desc: '肩套飾品，少見的升級槽位，能衝特定物理攻擊或敏捷屬性。',
     baseStats: { watk: 0, matk: 0, def: 2, str: 0, dex: 0, int: 0, luk: 0, acc: 0, eva: 0 }
+  },
+  {
+    name: '武器',
+    type: 'weapon',
+    slots: 7,
+    icon: '⚔️',
+    desc: '核心輸出武器。可用各職業武器攻擊/魔力卷軸衝高物理攻擊力或魔法攻擊力！',
+    baseStats: { watk: 80, matk: 0, def: 0, str: 0, dex: 0, int: 0, luk: 0, acc: 0, eva: 0 }
   }
 ];
 
@@ -409,6 +417,15 @@ const SCROLL_DICTIONARY: Record<string, ScrollTemplate[]> = {
   shoulder: [
     { name: '肩章屬性卷軸 60%', successRate: 60, boomOnFail: 0, isDark: false, desc: '物理攻擊力 +1, 力量 +1', stats: { watk: 1, str: 1 } },
     { name: '肩章屬性詛咒卷軸 30% (詛咒)', successRate: 30, boomOnFail: 50, isDark: true, desc: '頂尖！物理攻擊力 +3, 力量 +2, 敏捷 +2。失敗50%【摧毀裝備】', stats: { watk: 3, str: 2, dex: 2 } }
+  ],
+  weapon: [
+    { name: '武器攻擊力卷軸 100%', successRate: 100, boomOnFail: 0, isDark: false, desc: '穩過！物理攻擊力 +1', stats: { watk: 1 } },
+    { name: '武器攻擊力卷軸 60%', successRate: 60, boomOnFail: 0, isDark: false, desc: '最主流！物理攻擊力 +2, 力量 +1', stats: { watk: 2, str: 1 } },
+    { name: '武器攻擊力卷軸 10%', successRate: 10, boomOnFail: 0, isDark: false, desc: '夢幻神卷！物理攻擊力 +5, 力量 +3', stats: { watk: 5, str: 3 } },
+    { name: '武器攻擊力詛咒卷軸 70% (詛咒)', successRate: 70, boomOnFail: 50, isDark: true, desc: '70%成功：物理攻擊力 +3, 力量 +2。失敗50%【摧毀裝備】', stats: { watk: 3, str: 2 } },
+    { name: '武器攻擊力詛咒卷軸 30% (詛咒)', successRate: 30, boomOnFail: 50, isDark: true, desc: '神妙無比！物理攻擊力 +5, 力量 +3。失敗50%【摧毀裝備】', stats: { watk: 5, str: 3 } },
+    { name: '武器魔力卷軸 60%', successRate: 60, boomOnFail: 0, isDark: false, desc: '法系專屬！魔法攻擊力 +2, 智力 +1', stats: { matk: 2, int: 1 } },
+    { name: '武器魔力詛咒卷軸 30% (詛咒)', successRate: 30, boomOnFail: 50, isDark: true, desc: '法神追求！魔法攻擊力 +5, 智力 +3。失敗50%【摧毀裝備】', stats: { matk: 5, int: 3 } }
   ]
 };
 
@@ -458,6 +475,7 @@ export default function EquipScrollSimulator({ showToast }: { showToast: (msg: s
   const [dustParticles, setDustParticles] = useState<Array<{ id: number; delay: number; x: number; y: number }>>([]);
 
   // BIG DATA MULTIPLE SIMULATOR STATES (大數據量產模擬器)
+  const [simulatorMode, setSimulatorMode] = useState<'single' | 'batch'>('single');
   const [batchQuantity, setBatchQuantity] = useState(100);
   const [batchPresetIdx, setBatchPresetIdx] = useState(0);
   const [batchTargetScrollIdx, setBatchTargetScrollIdx] = useState(4); // default 30% Glove Atk
@@ -871,34 +889,31 @@ export default function EquipScrollSimulator({ showToast }: { showToast: (msg: s
         <button
           type="button"
           onClick={() => {
-            setBatchResults(null); 
-            // set mode, since we keep single view simple, we just toggle local sub-tab state!
+            setSimulatorMode('single');
           }}
-          className={`flex-1 py-2 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${!batchResults ? 'bg-indigo-600 text-white shadow' : 'text-slate-450 hover:text-slate-200'}`}
+          className={`flex-1 py-2 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${simulatorMode === 'single' ? 'bg-indigo-600 text-white shadow' : 'text-slate-450 hover:text-slate-200'}`}
         >
           <span>🎯 單裝升級拼機緣</span>
         </button>
         <button
           type="button"
           onClick={() => {
-            if (!batchResults) {
-              runBatchSimulation();
-            }
+            setSimulatorMode('batch');
           }}
-          className={`flex-1 py-2 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${batchResults ? 'bg-indigo-600 text-white shadow' : 'text-slate-450 hover:text-slate-200'}`}
+          className={`flex-1 py-2 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${simulatorMode === 'batch' ? 'bg-indigo-600 text-white shadow' : 'text-slate-450 hover:text-slate-200'}`}
         >
           <span>📊 批次大數據量產爆衝</span>
         </button>
       </div>
 
-      {!batchResults ? (
+      {simulatorMode === 'single' ? (
         /* ==================== 1. SINGLE SCROLL SIMULATOR VIEW ==================== */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
           {/* Controls Left Column */}
           <div className="lg:col-span-4 space-y-4">
             <div className="bg-slate-950 p-4 rounded-2xl border border-slate-850 space-y-3.5 select-none">
-              <label className="block text-xs font-black text-slate-400">选择裝備基底 Preset</label>
+              <label className="block text-xs font-black text-slate-400">選擇裝備基底 Preset</label>
               <div className="relative">
                 <select
                   value={selectedPresetIdx}
@@ -982,30 +997,6 @@ export default function EquipScrollSimulator({ showToast }: { showToast: (msg: s
                     </button>
                   ))}
                 </div>
-
-                {/* White scroll mechanic option */}
-                <div className="pt-2 border-t border-slate-900 flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="checkbox-white-scroll"
-                      checked={useWhiteScroll}
-                      onChange={(e) => setUseWhiteScroll(e.target.checked)}
-                      className="cursor-pointer rounded border-slate-800 bg-slate-900 text-indigo-600"
-                    />
-                    <label htmlFor="checkbox-white-scroll" className="text-xs font-semibold text-slate-350 cursor-pointer select-none flex items-center space-x-1">
-                      <span>👼 使用白卷軸 (White Scroll)</span>
-                    </label>
-                  </div>
-                  <span className="text-[9.5px] font-bold bg-amber-550/10 text-amber-450 border border-amber-550/20 px-1.5 py-0.5 rounded">
-                    失敗不扣次數
-                  </span>
-                </div>
-                {useWhiteScroll && (
-                  <p className="text-[9.5px] text-slate-500 mt-1 line-clamp-2">
-                    💡 使用白卷軸後，若捲軸不幸失敗，將**完美守護防具/武器不被扣減可升級次數**！但請注意，白卷軸依然防護不了【暗黑詛咒卷失败炸毀裝】的情形！
-                  </p>
-                )}
               </div>
             )}
           </div>
@@ -1279,17 +1270,21 @@ export default function EquipScrollSimulator({ showToast }: { showToast: (msg: s
 
             <div>
               <label className="block text-xs font-black text-slate-400 mb-2">量產測試防具/武器總數</label>
-              <select
-                value={batchQuantity}
-                onChange={(e) => setBatchQuantity(Number(e.target.value))}
-                className="w-full bg-slate-900 border border-slate-800 px-3 py-2 rounded-xl text-xs text-indigo-400 font-black cursor-pointer font-mono"
-              >
-                <option value={100}>💸 100 件 (急速模擬)</option>
-                <option value={500}>💸 500 件 (規模測試)</option>
-                <option value={1000}>🏰 1,000 件 (高級探究)</option>
-                <option value={5000}>⚔️ 5,000 件 (國庫暴走)</option>
-                <option value={10000}>👑 10,000 件 (神明級海量大統計)</option>
-              </select>
+              <div className="flex space-x-1.5 items-center">
+                <input
+                  type="number"
+                  min={1}
+                  max={50000}
+                  value={batchQuantity}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10);
+                    setBatchQuantity(isNaN(parsed) ? 100 : Math.min(50000, Math.max(1, parsed)));
+                  }}
+                  className="flex-1 bg-slate-900 border border-slate-800 focus:border-indigo-600 focus:outline-none px-3 py-2 rounded-xl text-xs text-indigo-400 font-extrabold font-mono"
+                  placeholder="請輸入數量"
+                />
+                <span className="text-xs text-slate-400 font-black pr-1 select-none">件</span>
+              </div>
             </div>
 
             <div>
@@ -1306,7 +1301,15 @@ export default function EquipScrollSimulator({ showToast }: { showToast: (msg: s
           </div>
 
           {/* Results Summary and Visual Graphics */}
-          {batchResults && (
+          {!batchResults ? (
+            <div className="bg-slate-950/40 p-10 rounded-3xl border border-slate-850/60 text-center select-none space-y-3">
+              <div className="text-4xl text-indigo-500 animate-pulse">📊</div>
+              <h4 className="text-sm font-black text-slate-300">尚未進行大數據批次模擬統計</h4>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                請在上方搭配選擇裝備基底與目標卷軸，並點選右側的 <span className="text-indigo-400 font-extrabold">【🪄 一鍵極致推演大數據!】</span>，系統將在瞬間為您全功率運算防具/武器砸卷成果，並以圖表為您做全盤概率特徵分析！
+              </p>
+            </div>
+          ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               
               {/* Highlight metrics panel */}

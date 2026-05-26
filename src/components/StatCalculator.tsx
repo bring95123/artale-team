@@ -391,9 +391,6 @@ export default function StatCalculator() {
             自身能力值屬性換算器 (Artale 面板設定)
           </h3>
         </div>
-        <p className="text-[11px] text-slate-400 mt-1">
-          極致精準還原經典冒險島面板與魔防命中核心算式。深度解析玩家最愛問的：<span className="text-teal-400 font-extrabold">「 1 物理攻擊力到底等於幾點主屬性？」</span>點開即解！
-        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -831,40 +828,14 @@ export default function StatCalculator() {
               </div>
             </div>
 
-            {/* Magician Magic Spells Damage Prediction Sub-module */}
-            {['magician'].includes(JOBS_LIST[selectedJobId]?.category) ? (
-              <div className="bg-slate-950/40 border border-cyan-950 p-3 rounded-xl">
-                <div className="flex justify-between items-center mb-1.5 border-b border-slate-800 pb-1">
-                  <span className="text-[10.5px] font-black text-cyan-400 flex items-center space-x-1">
-                    <span>✨</span> <span>法系核心法術傷害估算 (對 0 魔防怪單體)</span>
-                  </span>
-                  <span className="text-[9px] text-[#f1bf3e] font-bold">精準 4 期公式</span>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <label className="text-[10px] text-slate-400 mb-1 block">魔法技能選擇</label>
-                    <select
-                      value={activeSpellIdx}
-                      onChange={(e) => setActiveSpellIdx(parseInt(e.target.value))}
-                      className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-cyan-300 font-bold focus:outline-none"
-                    >
-                      {currentJobSpells.map((sp, idx) => (
-                        <option key={idx} value={idx}>{sp.name} (威力:{sp.baseAttack})</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400 block pb-1">預估單發傷害範圍</label>
-                    <div className="text-[11.5px] font-mono font-black text-teal-400 bg-slate-900 px-2 py-1 rounded text-center border border-slate-800 select-all">
-                      {activeSpell ? `${spellMin} ~ ${spellMax}` : '未知技能'}
-                    </div>
-                  </div>
-                </div>
+            {/* Class-specific advice panel */}
+            {JOBS_LIST[selectedJobId]?.category === 'magician' ? (
+              <div className="p-3 bg-slate-950/30 border border-slate-850 text-[10px] text-slate-400 rounded-xl leading-normal select-none">
+                💡 <b>法師核心效益</b>：基礎屬性中，<b>智力 (INT)</b> 與 <b>裝備魔法攻擊力</b> 具有高度等重的作用，提升魔攻可視為直接將百分比增幅法術總強度。由於沒有物理系「攻擊力稀釋」的問題，法術輸出與魔法攻擊面板具有非常精準的線性成長。
               </div>
             ) : (
-              <div className="p-3 bg-slate-950/30 border border-slate-850 text-[10px] text-slate-500 rounded-xl leading-normal select-none">
-                💡 <b>物理名言</b>：當前大後期物理職業，追求的高攻手套或高攻武器往往 1 點物攻價值不菲，蓋因你目前的 1 物理攻擊力能置換高達 <b>{waToMainStatRatio} 點</b>的本職核心主屬性，這正是為甚麼狂暴追求高攻卷極限的原因！
+              <div className="p-3 bg-slate-950/30 border border-slate-850 text-[10px] text-slate-400 rounded-xl leading-normal select-none">
+                💡 <b>物理名言</b>：當前大後期物理職業，追求的高攻手套或高攻武器往往 1 點物攻價值不菲，蓋因你目前的 1 物理攻擊力能置換高達 <b className="text-amber-400">{waToMainStatRatio} 點</b> 的本職核心主屬性，這正是為甚麼狂暴追求高攻卷極限的原因！
               </div>
             )}
           </div>
