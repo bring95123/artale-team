@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GachaResult, Character, DiscordUser, DiscordConfig, GACHA_FORTUNES, GACHA_SPOTS, FORTUNE_DESCRIPTIONS } from '../types';
+import FortuneDashboard from './FortuneDashboard';
 
 interface GachaSectionProps {
   activeCharacter: Character;
@@ -7,6 +8,9 @@ interface GachaSectionProps {
   discordConfig: DiscordConfig | null;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
   openProfileModal: () => void;
+  onSaveFortune?: (result: GachaResult, wishingNote: string) => Promise<void>;
+  fortunesList: any[];
+  customUid: string | null;
 }
 
 export default function GachaSection({
@@ -14,12 +18,17 @@ export default function GachaSection({
   discordUser,
   discordConfig,
   showToast,
-  openProfileModal
+  openProfileModal,
+  onSaveFortune,
+  fortunesList = [],
+  customUid
 }: GachaSectionProps) {
   const [gachaResult, setGachaResult] = useState<GachaResult | null>(null);
   const [isSpinning, setIsSpinning] = useState(false);
   const [selectedWebhookId, setSelectedWebhookId] = useState<string>('default');
   const [isSendingToDiscord, setIsSendingToDiscord] = useState(false);
+  const [wishingNote, setWishingNote] = useState('');
+  const [showDashboard, setShowDashboard] = useState(false);
 
   // Check if daily reset has passed (08:00 AM)
   const checkHasResetPassed = (lastTimeMs: number) => {
@@ -40,10 +49,12 @@ export default function GachaSection({
   useEffect(() => {
     const savedResult = localStorage.getItem('nyxshade_last_gacha_result');
     const savedTime = localStorage.getItem('nyxshade_last_gacha_time');
+    const savedWish = localStorage.getItem('nyxshade_last_wishing_note');
     if (savedResult && savedTime) {
       if (!checkHasResetPassed(Number(savedTime))) {
         try {
           setGachaResult(JSON.parse(savedResult));
+          if (savedWish) setWishingNote(savedWish);
         } catch (e) {
           console.error(e);
         }
@@ -124,6 +135,11 @@ export default function GachaSection({
 
         localStorage.setItem('nyxshade_last_gacha_time', String(Date.now()));
         localStorage.setItem('nyxshade_last_gacha_result', JSON.stringify(finalResult));
+        localStorage.setItem('nyxshade_last_wishing_note', wishingNote);
+
+        if (onSaveFortune) {
+          onSaveFortune(finalResult, wishingNote).catch((e) => console.error("Failed to save fortune to firestore", e));
+        }
 
         showToast("🔮 今日好運轉蛋抽取完成！快秀出運勢給公會吧！");
       }
@@ -414,7 +430,19 @@ export default function GachaSection({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 w-full md:w-auto shrink-0">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowDashboard(!showDashboard)}
+            className={`flex-1 md:flex-none border font-black px-4 py-3 rounded-xl shadow-md transition transform hover:-translate-y-0.5 active:scale-95 text-xs flex items-center justify-center space-x-1.5 ${
+              showDashboard 
+                ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30' 
+                : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20'
+            }`}
+          >
+            <span>📊 {showDashboard ? '收合公會大數據' : '查看公會大數據'}</span>
+          </button>
+
           <button
             type="button"
             onClick={handleSpinGacha}
@@ -452,7 +480,7 @@ export default function GachaSection({
                 type="button"
                 onClick={handleSendFortuneToDiscord}
                 disabled={isSendingToDiscord}
-                className="bg-gradient-to-r from-[#5865F2] to-[#454FBF] hover:from-[#4752C4] hover:to-[#3b43a9] disabled:from-slate-800 disabled:to-slate-900 text-white font-black px-4 py-2.5 rounded-xl text-xs transition transform hover:-translate-y-0.5 active:scale-95 shadow-md flex items-center justify-center space-x-1.5 shrink-0 flex-1 sm:flex-none animate-pulse animate-bounce"
+                className="bg-gradient-to-r from-[#5865F2] to-[#454FBF] hover:from-[#4752C4] hover:to-[#3b43a9] disabled:from-slate-800 disabled:to-slate-900 text-white font-black px-4 py-2.5 rounded-xl text-xs transition transform hover:-translate-y-0.5 active:scale-95 shadow-md flex items-center justify-center space-x-1.5 shrink-0 flex-1 sm:flex-none animate-pulse"
                 title="將此好運勢精繪成圖卡，發佈至選定的 Discord 頻道！"
               >
                 {isSendingToDiscord ? (
@@ -468,6 +496,50 @@ export default function GachaSection({
           )}
         </div>
       </div>
+
+      {/* Wishing Note Input Field */}
+      {!gachaResult && !isSpinning && (
+        <div className="mb-5 bg-indigo-950/20 border border-indigo-500/10 p-4 rounded-2xl">
+          <label className="block text-xs font-black text-indigo-400 uppercase tracking-widest mb-1.5 font-mono select-none">
+            ⭐ 撰寫今日星空願望 (選填，展示於公會星空祈願牆)
+          </label>
+          <input
+            type="text"
+            maxLength={60}
+            value={wishingNote}
+            onChange={(e) => setWishingNote(e.target.value)}
+            placeholder="例如：希望今天衝10%手卷能成功一發入魂！"
+            className="w-full bg-slate-950/90 border border-slate-800/80 focus:border-indigo-500/50 rounded-xl px-4 py-3 text-xs text-slate-205 text-slate-250 placeholder-slate-600 outline-none transition"
+          />
+        </div>
+      )}
+      {gachaResult && !isSpinning && (
+        <div className="mb-5 p-3.5 bg-indigo-950/15 border border-indigo-550/10 rounded-2xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 select-none">
+            <span className="text-sm">✨</span>
+            <span className="text-xs text-slate-300 font-semibold">
+              今日許願：<strong className="text-indigo-300 font-extrabold">“ {wishingNote || '希望衝裝順利、全隊爆寶！'} ”</strong>
+            </span>
+          </div>
+          <button 
+            type="button" 
+            onClick={() => {
+              const newWish = prompt("修改您的今日星空願望：", wishingNote);
+              if (newWish !== null) {
+                setWishingNote(newWish);
+                localStorage.setItem('nyxshade_last_wishing_note', newWish);
+                if (onSaveFortune) {
+                  onSaveFortune(gachaResult, newWish).catch(e => console.error(e));
+                }
+                showToast("✨ 星空願望儲存成功！已同步展示於公會大數據看板！", "success");
+              }
+            }}
+            className="text-[10px] text-indigo-400 hover:text-indigo-300 font-black bg-indigo-500/10 px-3 py-1.5 rounded-xl border border-indigo-500/25 shrink-0 select-none text-center"
+          >
+            ✏️ 修改今天的心願
+          </button>
+        </div>
+      )}
 
       {/* Gacha Results Panel */}
       {gachaResult ? (
@@ -514,6 +586,17 @@ export default function GachaSection({
       ) : (
         <div className="border border-dashed border-slate-800 rounded-2xl p-8 text-center text-slate-500 text-xs italic bg-slate-900/10 select-none">
           🔮 還沒有求籤喔！請點選上方「🎰 抽取今日好運轉蛋`」啟動運勢預測。
+        </div>
+      )}
+
+      {showDashboard && (
+        <div className="mt-8 pt-8 border-t border-indigo-900/40">
+          <FortuneDashboard
+            fortunesList={fortunesList}
+            activeCharacter={activeCharacter}
+            customUid={customUid}
+            showToast={showToast}
+          />
         </div>
       )}
     </div>

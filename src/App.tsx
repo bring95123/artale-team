@@ -28,6 +28,8 @@ import GachaSection from './components/GachaSection';
 import ChatSection from './components/ChatSection';
 import { ProfileModal, BossManagerModal, JobManagerModal, VoterDetailModal } from './components/Modals';
 import { AdminConsoleModal } from './components/AdminConsole';
+import SynergyAnalyzer from './components/SynergyAnalyzer';
+import FortuneDashboard from './components/FortuneDashboard';
 
 // Helper to format date times beautifully
 const formatDateTime = (dateTimeStr: string) => {
@@ -78,6 +80,7 @@ export default function App() {
   const [jobCategories, setJobCategories] = useState(DEFAULT_JOB_CATEGORIES);
   const [bosses, setBosses] = useState<Boss[]>(DEFAULT_BOSS_LIST);
   const [raids, setRaids] = useState<any[]>([]);
+  const [fortunes, setFortunes] = useState<any[]>([]);
   const [currentRaidId, setCurrentRaidId] = useState<string | null>(null);
 
   const [profile, setProfile] = useState<Profile>({
@@ -294,6 +297,21 @@ export default function App() {
     }, (error) => {
       console.error("Raids loading failed:", error);
     });
+
+    return () => unsubscribe();
+  }, [db]);
+
+  // Synchronize fortunes database list in real-time
+  useEffect(() => {
+    if (!db) return;
+    const fortunesCol = collection(db, `artifacts/${appId}/public/data/fortunes`);
+    const unsubscribe = onSnapshot(fortunesCol, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setFortunes(list);
+    }, (err) => console.error("Sync fortunes failed", err));
 
     return () => unsubscribe();
   }, [db]);
@@ -687,6 +705,45 @@ export default function App() {
     }
   };
 
+  const handleApplyOptimalRoster = async (newParticipants: any[]) => {
+    if (!db || !activeRaid) return;
+    try {
+      const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${activeRaid.id}`);
+      await updateDoc(raidRef, { participants: newParticipants });
+      showToast("分組已成功進行最佳化配置！");
+    } catch (err: any) {
+      console.error(err);
+      showToast("更新最佳化分組失敗", "error");
+    }
+  };
+
+  const handleSaveGachaFortune = async (finalResult: any, wishingNote: string) => {
+    if (!db || !customUid) return;
+    try {
+      const activeChar = profile.characters[profile.activeCharacterIndex] || { ign: '未知冒險家', job: '冒險家', level: 120 };
+      const fortuneRef = doc(db, `artifacts/${appId}/public/data/fortunes/${customUid}`);
+      await setDoc(fortuneRef, {
+        userId: customUid,
+        ign: activeChar.ign,
+        job: activeChar.job,
+        level: Number(activeChar.level) || 120,
+        timestamp: Date.now(),
+        fortuneStatus: finalResult.fortune.status,
+        fortuneColor: finalResult.fortune.color,
+        fortuneDesc: finalResult.fortune.desc,
+        luckyNumbers: finalResult.luckyNumbers,
+        spot: finalResult.spot,
+        wishingNote: wishingNote || '',
+        discord: discordUser ? {
+          username: discordUser.username,
+          avatar: discordUser.avatar
+        } : null
+      });
+    } catch (err) {
+      console.error("Failed to save fortune to Firestore:", err);
+    }
+  };
+
   const sendDiscordRaidWebhook = async (raid: any, actionType: 'finalize_time' | 'post_roster', extraData: any = {}) => {
     if (!discordConfig || !discordConfig.webhookUrl) {
       showToast("⚠️ 請先在管理者後台配置 Discord Webhook URL！", "error");
@@ -1006,6 +1063,9 @@ export default function App() {
                 discordConfig={discordConfig}
                 showToast={showToast}
                 openProfileModal={() => setShowProfileModal(true)}
+                onSaveFortune={handleSaveGachaFortune}
+                fortunesList={fortunes}
+                customUid={customUid}
               />
 
               {/* Active user schedules dashboard */}
@@ -1761,6 +1821,18 @@ export default function App() {
                       {partyCount >= 2 && renderRosterGroup('🟢 遠征二隊 (Party 2)', party2, '2', 'bg-emerald-500')}
                       {partyCount >= 3 && renderRosterGroup('🟣 遠征三隊 (Party 3)', party3, '3', 'bg-violet-500')}
                       {renderRosterGroup('🔸 預備 / 候補名單 (Reserves)', reserves, 'reserve', 'bg-slate-500')}
+                    </div>
+
+                    <div className="mt-8">
+                      <SynergyAnalyzer 
+                        participants={participants}
+                        activeRaidId={activeRaid.id}
+                        partyCount={partyCount}
+                        boss={boss || undefined}
+                        isCreator={isCreator}
+                        onApplyOptimization={handleApplyOptimalRoster}
+                        showToast={showToast}
+                      />
                     </div>
                   </div>
                 );
