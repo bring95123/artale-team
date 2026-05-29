@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { 
   Profile, 
   Character, 
@@ -28,6 +28,7 @@ interface ProfileModalProps {
   getDiscordLoginUrl: () => string;
   handleDisconnectDiscord: () => void;
   showToast: (msg: string, type?: 'success' | 'error') => void;
+  raids?: any[];
 }
 
 export function ProfileModal({
@@ -42,7 +43,8 @@ export function ProfileModal({
   setShowProfileModal,
   getDiscordLoginUrl,
   handleDisconnectDiscord,
-  showToast
+  showToast,
+  raids
 }: ProfileModalProps) {
   const [tempCharacters, setTempCharacters] = useState<Character[]>([]);
   const [tempActiveIndex, setTempActiveIndex] = useState(0);
@@ -112,6 +114,56 @@ export function ProfileModal({
         ...profileData,
         updatedAt: new Date().toISOString()
       });
+
+      // Cascade updates to all existing raids
+      if (raids && raids.length > 0) {
+        const activeChar = profileData.characters[profileData.activeCharacterIndex] || profileData.characters[0];
+        if (activeChar) {
+          for (const r of raids) {
+            let needsUpdate = false;
+            let updatedVotes = r.votes ? [...r.votes] : [];
+            let updatedParticipants = r.participants ? [...r.participants] : [];
+
+            updatedVotes = updatedVotes.map((v: any) => {
+              if (v.userId === customUid) {
+                needsUpdate = true;
+                return {
+                  ...v,
+                  ign: activeChar.ign,
+                  job: activeChar.job,
+                  level: activeChar.level,
+                  memo: activeChar.memo,
+                  discord: discordUser || null
+                };
+              }
+              return v;
+            });
+
+            updatedParticipants = updatedParticipants.map((p: any) => {
+              if (p.userId === customUid) {
+                needsUpdate = true;
+                return {
+                  ...p,
+                  ign: activeChar.ign,
+                  job: activeChar.job,
+                  level: activeChar.level,
+                  memo: activeChar.memo,
+                  discord: discordUser || null
+                };
+              }
+              return p;
+            });
+
+            if (needsUpdate) {
+              const rRef = doc(db, `artifacts/${appId}/public/data/raids/${r.id}`);
+              await updateDoc(rRef, {
+                votes: updatedVotes,
+                participants: updatedParticipants
+              });
+            }
+          }
+        }
+      }
 
       setProfile(profileData);
       setShowProfileModal(false);

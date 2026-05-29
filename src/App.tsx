@@ -574,10 +574,11 @@ export default function App() {
       const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
       let updatedVotes = [...(raid.votes || [])];
       
-      const userVoteIndex = updatedVotes.findIndex(v => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job);
+      const userVoteIndex = updatedVotes.findIndex(v => v.userId === customUid);
 
       if (userVoteIndex > -1) {
         const userVote = { ...updatedVotes[userVoteIndex] };
+        userVote.ign = activeCharacter.ign;
         userVote.job = activeCharacter.job;
         userVote.level = activeCharacter.level;
         userVote.memo = (activeCharacter.memo || '').trim();
@@ -639,7 +640,7 @@ export default function App() {
       try {
         const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
         const updatedVotes = (raid.votes || []).filter((v: any) => 
-          !(v.userId === targetUserId && v.ign === targetIgn && v.job === targetJob)
+          v.userId !== targetUserId
         );
         updateDoc(raidRef, { votes: updatedVotes });
         showToast("已成功採納或移除了此投票紀錄。");
@@ -652,8 +653,8 @@ export default function App() {
   const handleQuickEnroll = async (raidId: string, voter: any) => {
     const raid = raids.find(r => r.id === raidId);
     if (!raid) return;
-    if (raid.participants?.some((p: any) => p.userId === voter.userId && p.ign === voter.ign && p.job === voter.job)) {
-      showToast(`${voter.ign} (${voter.job}) 已經在錄取名單中囉！`, "error");
+    if (raid.participants?.some((p: any) => p.userId === voter.userId)) {
+      showToast(`${voter.ign} 已經在錄取名單中囉！`, "error");
       return;
     }
     try {
@@ -680,7 +681,7 @@ export default function App() {
     if (!raid) return;
     try {
       const updatedParticipants = raid.participants.map((p: any) => {
-        if (p.userId === targetUserId && p.ign === targetIgn && p.job === targetJob) return { ...p, party: targetParty };
+        if (p.userId === targetUserId) return { ...p, party: targetParty };
         return p;
       });
       const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
@@ -696,7 +697,7 @@ export default function App() {
       const targetRaid = raids.find(r => r.id === raidId);
       if (!targetRaid) return;
       try {
-        const updatedParticipants = targetRaid.participants.filter((p: any) => !(p.userId === targetUserId && p.ign === targetIgn && p.job === targetJob));
+        const updatedParticipants = targetRaid.participants.filter((p: any) => p.userId !== targetUserId);
         const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
         updateDoc(raidRef, { participants: updatedParticipants });
         showToast("已成功移出玩家。");
@@ -961,8 +962,7 @@ export default function App() {
 
     let memberListText = "";
     pList.forEach((p, idx) => {
-      const dcTag = p.discord ? ` (DC: @${p.discord.username})` : '';
-      memberListText += `${idx + 1}. [${p.job}] **${p.ign}** (Lv.${p.level})${dcTag}${p.memo ? ` - *${p.memo}*` : ''}\n`;
+      memberListText += `${idx + 1}. [${p.job}] **${p.ign}** (Lv.${p.level})${p.memo ? ` - *${p.memo}*` : ''}\n`;
     });
     if (pList.length === 0) {
       memberListText = "*(尚無隊員)*";
@@ -1032,8 +1032,8 @@ export default function App() {
 
   const myScheduleRaids = raids.filter(raid => {
     if (!activeCharacter.ign) return false;
-    const hasVotedActive = raid.votes?.some((v: any) => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job && Object.values(v.votes || {}).some(choice => choice === 'yes' || choice === 'maybe'));
-    const isEnrolledActive = raid.participants?.some((p: any) => p.userId === customUid && p.ign === activeCharacter.ign && p.job === activeCharacter.job);
+    const hasVotedActive = raid.votes?.some((v: any) => v.userId === customUid && Object.values(v.votes || {}).some(choice => choice === 'yes' || choice === 'maybe'));
+    const isEnrolledActive = raid.participants?.some((p: any) => p.userId === customUid);
     return hasVotedActive || isEnrolledActive;
   });
 
@@ -1232,7 +1232,7 @@ export default function App() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {myScheduleRaids.map((raid) => {
                         const raidBoss = bosses.find(b => b.id === raid.bossId);
-                        const participantInfo = raid.participants?.find((p: any) => p.userId === customUid && p.ign === activeCharacter.ign && p.job === activeCharacter.job);
+                        const participantInfo = raid.participants?.find((p: any) => p.userId === customUid);
                         let enrollmentStatus = "已投票（待排班錄取）";
                         if (participantInfo) {
                           if (participantInfo.party === 'reserve') enrollmentStatus = "⏳ 錄取為：候補成員";
@@ -1502,7 +1502,7 @@ export default function App() {
                     const yesVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'yes') || [];
                     const noVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'no') || [];
 
-                    const myVoteRecord = interestVotes.find((v: any) => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job);
+                    const myVoteRecord = interestVotes.find((v: any) => v.userId === customUid);
                     const myChoice = myVoteRecord?.votes?.['interest'] || null;
 
                     const renderVoterBadges = (votersList: any[], emoji: string) => {
@@ -1510,7 +1510,7 @@ export default function App() {
                       return (
                         <div className="flex flex-wrap gap-2.5 mt-2">
                           {votersList.map((voter, vIdx) => {
-                            const alreadyInRaid = activeRaid.participants?.some((p: any) => p.userId === voter.userId && p.ign === voter.ign && p.job === voter.job);
+                            const alreadyInRaid = activeRaid.participants?.some((p: any) => p.userId === voter.userId);
                             return (
                               <div 
                                 key={voter.userId + '-' + voter.ign + '-' + voter.job + '-' + vIdx}
@@ -1636,7 +1636,7 @@ export default function App() {
                       const maybeVotes = activeRaid.votes?.filter((v: any) => v.votes?.[idx] === 'maybe') || [];
                       const noVotes = activeRaid.votes?.filter((v: any) => v.votes?.[idx] === 'no') || [];
 
-                      const myVoteRecord = activeRaid.votes?.find((v: any) => v.userId === customUid && v.ign === activeCharacter.ign && v.job === activeCharacter.job);
+                      const myVoteRecord = activeRaid.votes?.find((v: any) => v.userId === customUid);
                       const myChoice = myVoteRecord?.votes?.[idx] || null;
 
                       const isFinalized = activeRaid.finalTimeIndex === idx;
@@ -1646,7 +1646,7 @@ export default function App() {
                         return (
                           <div className="flex flex-wrap gap-2.5 mt-2 animate-in fade-in duration-300">
                             {votersList.map((voter, vIdx) => {
-                              const alreadyInRaid = activeRaid.participants?.some((p: any) => p.userId === voter.userId && p.ign === voter.ign && p.job === voter.job);
+                              const alreadyInRaid = activeRaid.participants?.some((p: any) => p.userId === voter.userId);
                               return (
                                 <div 
                                   key={voter.userId + '-' + voter.ign + '-' + voter.job + '-' + vIdx}
@@ -2094,6 +2094,7 @@ export default function App() {
         getDiscordLoginUrl={getDiscordLoginUrl}
         handleDisconnectDiscord={handleDisconnectDiscord}
         showToast={showToast}
+        raids={raids}
       />
 
       {/* Boss settings Modal */}
