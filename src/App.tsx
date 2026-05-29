@@ -978,7 +978,7 @@ export default function App() {
     setShowThreadModal(true);
   };
 
-  const handleSendDiscordThread = async (mode: 'webhook' | 'bot', targetValue: string) => {
+  const handleSendDiscordThread = async (targetValue: string) => {
     if (!threadTitle.trim()) {
       showToast("請輸入討論串標題！", "error");
       return;
@@ -986,68 +986,37 @@ export default function App() {
     
     setIsSendingThread(true);
     try {
-      if (mode === 'webhook') {
-        if (!targetValue) {
-          showToast("⚠️ 無法發送：尚未選擇或設定合法的 Webhook 頻道網址！", "error");
-          setIsSendingThread(false);
-          return;
-        }
-        const payload = {
-          content: threadMessage,
-          // Keep it in payload as well for backward/forward compatibility
-          thread_name: threadTitle.trim()
-        };
+      // Bot Mode Only
+      if (!discordConfig?.botToken) {
+        showToast("⚠️ 請先在管理者後台配置 Discord 機器人 (Bot) 權杖 Token！", "error");
+        setIsSendingThread(false);
+        return;
+      }
+      if (!targetValue) {
+        showToast("⚠️ 請輸入或設定有效的目標頻道 ID！", "error");
+        setIsSendingThread(false);
+        return;
+      }
 
-        // Discord requires `thread_name` URL query parameter to create a thread from scratch at the Webhook endpoint
-        let finalUrl = targetValue;
-        const separator = finalUrl.includes('?') ? '&' : '?';
-        finalUrl += `${separator}thread_name=${encodeURIComponent(threadTitle.trim())}`;
+      const response = await fetch('/api/discord/create-thread', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          botToken: discordConfig.botToken,
+          channelId: targetValue,
+          title: threadTitle.trim(),
+          message: threadMessage
+        })
+      });
 
-        const response = await fetch(finalUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (response.ok) {
-          showToast(`📢 成功為「遠征${threadPartyKey === '1' ? '一隊' : threadPartyKey === '2' ? '二隊' : '三隊'}」在 Discord 建立討論串！`, "success");
-          setShowThreadModal(false);
-        } else {
-          throw new Error("Discord webhook creation returned status " + response.status);
-        }
+      if (response.ok) {
+        showToast(`🤖 Discord Bot 成功為「遠征${threadPartyKey === '1' ? '一隊' : threadPartyKey === '2' ? '二隊' : '三隊'}」建立討論串！`, "success");
+        setShowThreadModal(false);
       } else {
-        // Mode 'bot'
-        if (!discordConfig?.botToken) {
-          showToast("⚠️ 請先在管理者後台配置 Discord 機器人 (Bot) 權杖 Token！", "error");
-          setIsSendingThread(false);
-          return;
-        }
-        if (!targetValue) {
-          showToast("⚠️ 請輸入或設定有效的目標頻道 ID！", "error");
-          setIsSendingThread(false);
-          return;
-        }
-
-        const response = await fetch('/api/discord/create-thread', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            botToken: discordConfig.botToken,
-            channelId: targetValue,
-            title: threadTitle.trim(),
-            message: threadMessage
-          })
-        });
-
-        if (response.ok) {
-          showToast(`🤖 Discord Bot 成功為「遠征${threadPartyKey === '1' ? '一隊' : threadPartyKey === '2' ? '二隊' : '三隊'}」建立討論串！`, "success");
-          setShowThreadModal(false);
-        } else {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error || `Server status ${response.status}`);
-        }
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Server status ${response.status}`);
       }
     } catch (err: any) {
       console.error(err);

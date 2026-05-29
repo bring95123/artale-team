@@ -12,7 +12,7 @@ interface DiscordThreadModalProps {
   setThreadTitle: (val: string) => void;
   threadMessage: string;
   setThreadMessage: (val: string) => void;
-  onSend: (mode: 'webhook' | 'bot', targetValue: string) => Promise<void>;
+  onSend: (targetValue: string) => Promise<void>;
   isSending: boolean;
   members: any[];
   discordConfig: DiscordConfig | null;
@@ -34,20 +34,11 @@ export default function DiscordThreadModal({
   discordConfig,
   showToast
 }: DiscordThreadModalProps) {
-  const [deliveryMode, setDeliveryMode] = React.useState<'webhook' | 'bot'>('webhook');
-  const [selectedWebhookUrl, setSelectedWebhookUrl] = React.useState<string>('');
   const [customChannelId, setCustomChannelId] = React.useState<string>('');
 
   React.useEffect(() => {
     if (isOpen && discordConfig) {
-      setSelectedWebhookUrl(discordConfig.webhookUrl || '');
       setCustomChannelId(discordConfig.botChannelId || '');
-      // If Webhook is not configured but Bot is, default to bot mode automatically
-      if (!discordConfig.webhookUrl && discordConfig.botToken) {
-        setDeliveryMode('bot');
-      } else {
-        setDeliveryMode('webhook');
-      }
     }
   }, [isOpen, discordConfig]);
 
@@ -104,77 +95,27 @@ export default function DiscordThreadModal({
             
             {/* Left side: Form Settings */}
             <div className="lg:col-span-7 space-y-4">
-              {/* Delivery Mode Selector */}
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5 select-none">
-                  ⚡ 創串發送模式 (Delivery Mode)
+                <label className="block text-xs font-bold text-indigo-400 uppercase mb-1.5 select-none">
+                  🆔 目標文字/論壇頻道 ID (Target Channel ID)
                 </label>
-                <div className="flex gap-2 p-1 bg-slate-950 border border-slate-800 rounded-2xl">
-                  <button
-                    type="button"
-                    onClick={() => setDeliveryMode('webhook')}
-                    className={`flex-1 flex items-center justify-center space-x-1.5 py-2.5 rounded-xl font-bold text-xs transition duration-150 ${deliveryMode === 'webhook' ? 'bg-indigo-600 text-white shadow' : 'bg-transparent text-slate-450 hover:bg-slate-900/50 text-slate-400'}`}
-                  >
-                    <span>🌐 Webhook 傳送</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDeliveryMode('bot')}
-                    className={`flex-1 flex items-center justify-center space-x-1.5 py-2.5 rounded-xl font-bold text-xs transition duration-150 ${deliveryMode === 'bot' ? 'bg-indigo-600 text-white shadow' : 'bg-transparent text-slate-450 hover:bg-slate-900/50 text-slate-400'}`}
-                  >
-                    <span>🤖 DC 機器人 (Bot)</span>
-                  </button>
-                </div>
+                <input 
+                  type="text"
+                  value={customChannelId}
+                  onChange={(e) => setCustomChannelId(e.target.value)}
+                  placeholder="請貼上文字頻道或討論區 Forum ID"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 focus:outline-none focus:border-indigo-505 font-mono font-bold text-xs"
+                />
+                {!discordConfig?.botToken ? (
+                  <span className="text-[10px] text-rose-450 text-rose-400 mt-1 block select-none">
+                    ⚠️ 尚未在管理者後台配置 Bot Token 密鑰，請先進行設定。
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-slate-500 mt-1 block select-none">
+                    💡 開發者模式下右鍵複製頻道。Bot 需具備發言及建立討論串權限。
+                  </span>
+                )}
               </div>
-
-              {deliveryMode === 'webhook' ? (
-                <div>
-                  <label className="block text-xs font-bold text-amber-400 uppercase mb-1.5 select-none">
-                    🌐 發送至 Discord 目標頻道 (Webhook)
-                  </label>
-                  <select 
-                    value={selectedWebhookUrl}
-                    onChange={(e) => setSelectedWebhookUrl(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 focus:outline-none focus:border-indigo-500 font-bold text-xs"
-                  >
-                    {discordConfig?.webhookUrl && (
-                      <option value={discordConfig.webhookUrl}>
-                        📢 主要廣播頻道 (預設 WEBHOOK)
-                      </option>
-                    )}
-                    {discordConfig?.webhooks?.map((wh) => (
-                      <option key={wh.id} value={wh.url}>
-                        #{wh.name} (自訂頻道)
-                      </option>
-                    ))}
-                    {!discordConfig?.webhookUrl && (!discordConfig?.webhooks || discordConfig.webhooks.length === 0) && (
-                      <option value="">(⚠️ 伺服器管理者尚未配置任何 Webhook)</option>
-                    )}
-                  </select>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-bold text-indigo-400 uppercase mb-1.5 select-none">
-                    🆔 目標文字/論壇頻道 ID (Target Channel ID)
-                  </label>
-                  <input 
-                    type="text"
-                    value={customChannelId}
-                    onChange={(e) => setCustomChannelId(e.target.value)}
-                    placeholder="請貼上文字頻道或討論區 Forum ID"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 focus:outline-none focus:border-indigo-500 font-mono font-bold text-xs"
-                  />
-                  {!discordConfig?.botToken ? (
-                    <span className="text-[10px] text-rose-400 mt-1 block select-none">
-                      ⚠️ 尚未在管理者後台配置 Bot Token 密鑰，請先進行設定。
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-slate-500 mt-1 block select-none">
-                      💡 開發者模式下右鍵複製頻道。Bot 需具備發言及建立討論串權限。
-                    </span>
-                  )}
-                </div>
-              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5 select-none">
@@ -270,8 +211,8 @@ export default function DiscordThreadModal({
 
               <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 text-[10px] text-slate-400 leading-relaxed space-y-1 mt-4 select-none">
                 <p className="font-bold text-indigo-300">💡 運作機制與權限備忘：</p>
-                <p>1. 討論串可透過 Webhook 或 Discord Bot 進行創串。為配合 Discord 機制，請確保目標頻道屬性支援建立討論串。</p>
-                <p>2. 各組排班表確認後，點擊下面按鈕即可使用 Bot / Webhook 與對應的 DC 頻道進行討論串建立與標記成員！</p>
+                <p>1. 討論串將透過 Discord Bot 進行自動建立。為配合 Discord 機制，請確保目標頻道屬性支援建立討論串頻道（如論壇 Channel 或具備 Thread 建立權限的 Text Channel）。</p>
+                <p>2. 各組排班確認後，點擊下面按鈕即可使用 Bot 在對應的 DC 頻道自動建立討論串並 @標記 小隊成員！</p>
               </div>
             </div>
 
@@ -297,15 +238,12 @@ export default function DiscordThreadModal({
             </button>
 
             {(() => {
-              const targetValue = deliveryMode === 'webhook' ? selectedWebhookUrl : customChannelId;
-              const canSend = deliveryMode === 'webhook' 
-                ? (!!selectedWebhookUrl && activeMembers.length > 0)
-                : (!!discordConfig?.botToken && !!customChannelId && activeMembers.length > 0);
+              const canSend = !!discordConfig?.botToken && !!customChannelId && activeMembers.length > 0;
 
               return (
                 <button 
                   type="button" 
-                  onClick={() => onSend(deliveryMode, targetValue)}
+                  onClick={() => onSend(customChannelId)}
                   disabled={isSending || !canSend}
                   className={`flex-1 ${isSending || !canSend ? 'bg-indigo-900/30 text-indigo-400/50 cursor-not-allowed' : 'bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white shadow'} py-3 rounded-xl text-sm font-extrabold transition duration-200 flex items-center justify-center space-x-2`}
                 >
@@ -319,7 +257,7 @@ export default function DiscordThreadModal({
                     </>
                   ) : (
                     <>
-                      <span>💬 {deliveryMode === 'webhook' ? 'Webhook 傳送創串' : 'Bot 自動傳送親測'}</span>
+                      <span>💬 Bot 自動傳送創串</span>
                     </>
                   )}
                 </button>
