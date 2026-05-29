@@ -81,6 +81,8 @@ export interface DiscordConfig {
   apiEndpoint: string;
   webhookUrl: string;
   webhooks?: WebhookChannel[];
+  botToken?: string;
+  botChannelId?: string;
 }
 
 export interface GachaFortune {

@@ -360,9 +360,41 @@ export function AdminConsoleModal({
                   </div>
                 </div>
 
+                {/* Discord Bot Configuration Section */}
+                <div className="border-t border-slate-800 pt-3 mt-3 space-y-3">
+                  <div>
+                    <label className="block text-indigo-400 mb-1 font-black">🤖 Discord 機器人 (Bot) 設定 (用於建立討論串)</label>
+                    <p className="text-[10px] text-slate-400 mb-2">配置您的 Discord 機器人以在特定頻道中，自動為被錄取的小隊成員建立專屬討論串頻道。</p>
+                    
+                    <div className="space-y-2.5 bg-slate-950/80 p-3 rounded-xl border border-slate-800">
+                      <div>
+                        <label className="block text-[10px] text-slate-400 mb-1 font-bold">機器人權杖 (Bot Token)</label>
+                        <input
+                          type="password"
+                          placeholder="在此填入 MTg5NzY... 機器人 Token 密鑰"
+                          value={discordConfig?.botToken || ''}
+                          onChange={(e) => setDiscordConfig({ ...discordConfig, botToken: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none font-mono placeholder-slate-700"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 mb-1 font-bold">預設目標頻道 / 論壇 ID (Channel ID)</label>
+                        <input
+                          type="text"
+                          placeholder="例如: 11022084242489355"
+                          value={discordConfig?.botChannelId || ''}
+                          onChange={(e) => setDiscordConfig({ ...discordConfig, botChannelId: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none font-mono placeholder-slate-700"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="bg-slate-900/60 p-2.5 rounded border border-slate-800 text-[10px] text-slate-500 leading-relaxed font-bold">
-                  <strong className="text-amber-500">📌 Webhook 廣播使用：</strong>
-                  <p>填寫 Webhook 後，點選最下方「儲存 Discord 連線設定」保存。當排班或神殿抽獎完成後，即可隨心所欲地一鍵廣播！</p>
+                  <strong className="text-amber-500">📌 Discord 整合使用說明：</strong>
+                  <p>1. 填寫 Webhook 或 Bot 設定，點選「儲存 Discord 連線設定」保存。</p>
+                  <p>2. 各組排班表確認後，點擊「💬 討論串」即可使用 Bot / Webhook 與對應的 DC 頻道進行討論串建立！</p>
                 </div>
 
                 <button

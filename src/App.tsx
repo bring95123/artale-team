@@ -32,6 +32,7 @@ import SynergyAnalyzer from './components/SynergyAnalyzer';
 import FortuneDashboard from './components/FortuneDashboard';
 import EquipScrollSimulator from './components/EquipScrollSimulator';
 import StatCalculator from './components/StatCalculator';
+import DiscordThreadModal from './components/DiscordThreadModal';
 
 // Helper to format date times beautifully
 const formatDateTime = (dateTimeStr: string) => {
@@ -100,6 +101,14 @@ export default function App() {
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
   const [showAdminConsole, setShowAdminConsole] = useState(false);
   const [voterDetailModal, setVoterDetailModal] = useState<{ isOpen: boolean; voter: any }>({ isOpen: false, voter: null });
+
+  // Discord Thread Modal State
+  const [showThreadModal, setShowThreadModal] = useState(false);
+  const [threadPartyKey, setThreadPartyKey] = useState<string>('1');
+  const [threadTitle, setThreadTitle] = useState<string>('');
+  const [threadMessage, setThreadMessage] = useState<string>('');
+  const [threadMembers, setThreadMembers] = useState<any[]>([]);
+  const [isSendingThread, setIsSendingThread] = useState(false);
 
   // Creation State
   const [isCreating, setIsCreating] = useState(false);
@@ -900,6 +909,154 @@ export default function App() {
     showToast("排班表格式已複製到剪貼簿！可直接貼在群組中。");
   };
 
+  const getBossShortName = (bossId: string, bossName: string) => {
+    if (bossId === 'zakum_normal') return '炎魔';
+    if (bossId === 'papu_normal') return '普拉';
+    if (bossId === 'papu_hard') return '困拉';
+    if (bossId === 'horntail') return '龍王';
+    if (bossId === 'pink_bean') return '蝴蝶';
+    const cleanName = bossName ? bossName.split(' (')[0] : '';
+    return cleanName.length > 4 ? cleanName.substring(0, 4) : cleanName;
+  };
+
+  const handleOpenThreadModal = (partyKey: string, pList: any[]) => {
+    if (!discordConfig || (!discordConfig.webhookUrl && (!discordConfig.webhooks || discordConfig.webhooks.length === 0))) {
+      showToast("⚠️ 請先在管理者後台配置 Discord Webhook URL！", "error");
+      return;
+    }
+
+    const matchedBoss = bosses.find(b => b.id === activeRaid?.bossId);
+    const bossShortName = getBossShortName(activeRaid?.bossId || '', matchedBoss?.name || '');
+    
+    let dateStr = "";
+    if (activeRaid?.mode === 'interest') {
+      const d = new Date();
+      dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
+    } else if (typeof activeRaid?.finalTimeIndex === 'number' && activeRaid.proposedTimes?.[activeRaid.finalTimeIndex]) {
+      const d = new Date(activeRaid.proposedTimes[activeRaid.finalTimeIndex]);
+      if (!isNaN(d.getTime())) {
+        dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
+      }
+    } else if (activeRaid?.proposedTimes && activeRaid.proposedTimes[0]) {
+      const d = new Date(activeRaid.proposedTimes[0]);
+      if (!isNaN(d.getTime())) {
+        dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
+      }
+    } else {
+      const d = new Date();
+      dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
+    }
+
+    const partyName = partyKey === '1' ? '一隊' : partyKey === '2' ? '二隊' : '三隊';
+    const suggestedTitle = `${dateStr}${bossShortName}遠征${partyName}`;
+    setThreadTitle(suggestedTitle);
+    setThreadPartyKey(partyKey);
+    setThreadMembers(pList);
+
+    const activeRaidTitle = activeRaid?.title || '';
+    const pings = pList
+      .filter((p: any) => p.discord && p.discord.id)
+      .map((p: any) => `<@${p.discord.id}>`)
+      .join(" ");
+
+    let memberListText = "";
+    pList.forEach((p, idx) => {
+      const dcTag = p.discord ? ` (DC: @${p.discord.username})` : '';
+      memberListText += `${idx + 1}. [${p.job}] **${p.ign}** (Lv.${p.level})${dcTag}${p.memo ? ` - *${p.memo}*` : ''}\n`;
+    });
+    if (pList.length === 0) {
+      memberListText = "*(尚無隊員)*";
+    }
+
+    let defaultMsg = `⚔️ **【遠征 ${partyName} 戰前討論討論串】** ⚔️\n`;
+    defaultMsg += `📌 **主題**：${activeRaidTitle}\n`;
+    defaultMsg += `🔔 **召集隊員**：${pings ? pings : '（本小隊無 Discord 綁定成員）'}\n\n`;
+    defaultMsg += `📋 **本組（遠征 ${partyName}）隊員名單**：\n${memberListText}\n`;
+    defaultMsg += `💬 阿羅哈各位！此討論串已建立，成員已被自動標記。請在此商議各位的出團細節與 Buffer 排班！`;
+
+    setThreadMessage(defaultMsg);
+    setShowThreadModal(true);
+  };
+
+  const handleSendDiscordThread = async (mode: 'webhook' | 'bot', targetValue: string) => {
+    if (!threadTitle.trim()) {
+      showToast("請輸入討論串標題！", "error");
+      return;
+    }
+    
+    setIsSendingThread(true);
+    try {
+      if (mode === 'webhook') {
+        if (!targetValue) {
+          showToast("⚠️ 無法發送：尚未選擇或設定合法的 Webhook 頻道網址！", "error");
+          setIsSendingThread(false);
+          return;
+        }
+        const payload = {
+          content: threadMessage,
+          // Keep it in payload as well for backward/forward compatibility
+          thread_name: threadTitle.trim()
+        };
+
+        // Discord requires `thread_name` URL query parameter to create a thread from scratch at the Webhook endpoint
+        let finalUrl = targetValue;
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}thread_name=${encodeURIComponent(threadTitle.trim())}`;
+
+        const response = await fetch(finalUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+          showToast(`📢 成功為「遠征${threadPartyKey === '1' ? '一隊' : threadPartyKey === '2' ? '二隊' : '三隊'}」在 Discord 建立討論串！`, "success");
+          setShowThreadModal(false);
+        } else {
+          throw new Error("Discord webhook creation returned status " + response.status);
+        }
+      } else {
+        // Mode 'bot'
+        if (!discordConfig?.botToken) {
+          showToast("⚠️ 請先在管理者後台配置 Discord 機器人 (Bot) 權杖 Token！", "error");
+          setIsSendingThread(false);
+          return;
+        }
+        if (!targetValue) {
+          showToast("⚠️ 請輸入或設定有效的目標頻道 ID！", "error");
+          setIsSendingThread(false);
+          return;
+        }
+
+        const response = await fetch('/api/discord/create-thread', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            botToken: discordConfig.botToken,
+            channelId: targetValue,
+            title: threadTitle.trim(),
+            message: threadMessage
+          })
+        });
+
+        if (response.ok) {
+          showToast(`🤖 Discord Bot 成功為「遠征${threadPartyKey === '1' ? '一隊' : threadPartyKey === '2' ? '二隊' : '三隊'}」建立討論串！`, "success");
+          setShowThreadModal(false);
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `Server status ${response.status}`);
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(`發送失敗：${err.message || "請確認權杖 Token 或目標頻道 ID 權限"}`, "error");
+    } finally {
+      setIsSendingThread(false);
+    }
+  };
+
   const activeRaid = raids.find(r => r.id === currentRaidId);
   const boss = activeRaid ? bosses.find(b => b.id === activeRaid.bossId) : null;
   const isCreator = activeRaid ? (activeRaid.creatorId === customUid || isAdminLoggedIn) : false;
@@ -1356,6 +1513,8 @@ export default function App() {
                 </div>
               </div>
 
+
+
               {/* Roster & voting options details */}
               {activeRaid.mode === 'interest' ? (
                 /* INTEREST MODE PANEL */
@@ -1705,9 +1864,21 @@ export default function App() {
                             <span className={`w-3 h-3 rounded-full shrink-0 ${color}`} />
                             <span className="text-slate-200 truncate">{title}</span>
                           </h4>
-                          <span className="text-xs font-bold bg-slate-800 text-slate-400 px-2.5 py-0.5 rounded-full whitespace-nowrap shrink-0 font-mono border border-slate-750">
-                            {pList.length} / 6
-                          </span>
+                          <div className="flex items-center space-x-2 shrink-0">
+                            {groupKey !== 'reserve' && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenThreadModal(groupKey, pList)}
+                                className="text-[11px] bg-[#5865F2]/20 hover:bg-[#5865F2]/40 border border-[#5865F2]/30 hover:border-[#5865F2]/65 text-indigo-400 hover:text-indigo-300 font-extrabold px-2.5 py-1 rounded-lg transition shrink-0 select-none flex items-center space-x-1"
+                                title="為此小隊在 Discord 建立專屬討論串"
+                              >
+                                <span>💬 討論串</span>
+                              </button>
+                            )}
+                            <span className="text-xs font-bold bg-slate-800 text-slate-400 px-2.5 py-0.5 rounded-full whitespace-nowrap shrink-0 font-mono border border-slate-750">
+                              {pList.length} / 6
+                            </span>
+                          </div>
                         </div>
 
                         <div className="space-y-3.5">
@@ -1922,6 +2093,23 @@ export default function App() {
           )}
         </div>
       </footer>
+
+      {/* Discord party thread creator modal */}
+      <DiscordThreadModal
+        isOpen={showThreadModal}
+        onClose={() => setShowThreadModal(false)}
+        partyTitle={threadPartyKey === '1' ? '🔵 遠征一隊' : threadPartyKey === '2' ? '🟢 遠征二隊' : '🟣 遠征三隊'}
+        partyKey={threadPartyKey}
+        threadTitle={threadTitle}
+        setThreadTitle={setThreadTitle}
+        threadMessage={threadMessage}
+        setThreadMessage={setThreadMessage}
+        onSend={handleSendDiscordThread}
+        isSending={isSendingThread}
+        members={threadMembers}
+        discordConfig={discordConfig}
+        showToast={showToast}
+      />
 
       {/* Profile setups Modal */}
       <ProfileModal 
