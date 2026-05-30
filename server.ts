@@ -1,12 +1,54 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
+import multer from "multer";
+import fs from "fs";
 
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
+
+  // Serve custom user uploaded files statically under /uploads in both dev and production
+  const uploadRootDir = path.join(process.cwd(), "public", "uploads");
+  if (!fs.existsSync(uploadRootDir)) {
+    fs.mkdirSync(uploadRootDir, { recursive: true });
+  }
+  app.use("/uploads", express.static(uploadRootDir));
+
+  // Multer storage setup targeting specific raid IDs
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      const { raidId } = req.params;
+      const raidDir = path.join(uploadRootDir, raidId);
+      if (!fs.existsSync(raidDir)) {
+        fs.mkdirSync(raidDir, { recursive: true });
+      }
+      cb(null, raidDir);
+    },
+    filename: (req, file, cb) => {
+      cb(null, "custom_tools.zip");
+    }
+  });
+
+  const upload = multer({
+    storage,
+    limits: { fileSize: 50 * 1024 * 1024 } // Generous 50MB limit
+  });
+
+  // API Route - Upload custom ZIP files for a raid
+  app.post("/api/raids/:raidId/upload-tools", upload.single("file"), (req: express.Request, res: express.Response) => {
+    const { raidId } = req.params;
+    if (!req.file) {
+      return res.status(400).json({ error: "Missing uploaded file. Make sure field name is 'file'." });
+    }
+    return res.json({
+      success: true,
+      fileUrl: `/uploads/${raidId}/custom_tools.zip`,
+      fileName: req.file.originalname
+    });
+  });
 
   // API Route - Create Discord Bot Thread
   app.post("/api/discord/create-thread", async (req: express.Request, res: express.Response) => {

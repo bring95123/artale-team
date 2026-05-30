@@ -135,6 +135,9 @@ export default function App() {
   // Floating Chat control
   const [isChatOpen, setIsChatOpen] = useState(false);
 
+  // File uploading states
+  const [isUploadingTools, setIsUploadingTools] = useState(false);
+
   // Hidden admin click triggers
   const [hiddenResetClicks, setHiddenResetClicks] = useState(0);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(() => {
@@ -727,6 +730,70 @@ export default function App() {
     } catch (err: any) {
       console.error(err);
       showToast("更新最佳化分組失敗", "error");
+    }
+  };
+
+  const handleUploadTools = async (raidId: string, file: File) => {
+    if (!file) return;
+    const isZip = file.name.endsWith('.zip') || file.name.endsWith('.rar') || file.name.endsWith('.7z');
+    if (!isZip) {
+      showToast("請上傳壓縮檔格式！ (.zip, .rar, .7z)", "error");
+      return;
+    }
+    // Limit to 50MB
+    if (file.size > 50 * 1024 * 1024) {
+      showToast("檔案容量超過 50MB 限制！", "error");
+      return;
+    }
+
+    setIsUploadingTools(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`/api/raids/${raidId}/upload-tools`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "伺服器內部錯誤");
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
+        await updateDoc(raidRef, {
+          customToolsUrl: result.fileUrl,
+          customToolsName: file.name,
+          customToolsUploadedAt: new Date().toISOString()
+        });
+        showToast("遠征工具包自訂 ZIP 上傳成功！", "success");
+      } else {
+        throw new Error(result.error || "上傳失敗");
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(`上傳失敗: ${err.message || err}`, "error");
+    } finally {
+      setIsUploadingTools(false);
+    }
+  };
+
+  const handleRemoveCustomTools = async (raidId: string) => {
+    if (!confirm("確定要移除此自訂遠征工具包嗎？")) return;
+    try {
+      const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
+      await updateDoc(raidRef, {
+        customToolsUrl: null,
+        customToolsName: null,
+        customToolsUploadedAt: null
+      });
+      showToast("已成功移除自訂工具包，恢復為預設範本。");
+    } catch (err: any) {
+      console.error(err);
+      showToast(`移除失敗: ${err.message}`, "error");
     }
   };
 
@@ -1426,6 +1493,79 @@ export default function App() {
                       {activeRaid.notes || "團長沒有提供詳細備註。"}
                     </div>
                   </div>
+
+                  {activeRaid.bossId === 'horntail' && (
+                    <div className="bg-emerald-950/20 border border-emerald-800/50 rounded-2xl p-5 space-y-4 select-none">
+                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                        <div className="flex items-start space-x-3.5">
+                          <span className="text-3xl mt-0.5 shrink-0">🐉</span>
+                          <div>
+                            <h5 className="font-extrabold text-sm md:text-base text-emerald-300">
+                              {activeRaid.customToolsUrl ? "📥 自訂遠征隊專屬工具包已可下載" : "🐉 龍王遠征隊專用工具包已供下載"}
+                            </h5>
+                            <p className="text-xs text-slate-300 mt-1 leading-relaxed max-w-xl">
+                              {activeRaid.customToolsUrl ? (
+                                <>
+                                  本遠征團已由團長上傳自訂攻略與資源包：<strong className="text-emerald-400 underline">{activeRaid.customToolsName}</strong>
+                                  {activeRaid.customToolsUploadedAt && (
+                                    <span className="text-slate-400 block mt-1 font-mono text-[11px]">
+                                      上傳於：{new Date(activeRaid.customToolsUploadedAt).toLocaleString('zh-TW')}
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                "內含【九層龍王遠征隊】各職業地圖走位教學、全功能打法指南、大腦與本體計時排程冷卻說明，以及個人出征必備補給藥水自主檢核清單 (.txt 檔案)。建議所有遠征團員下載。"
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        <a
+                          href={activeRaid.customToolsUrl || "./horntail_tools.zip"}
+                          download={activeRaid.customToolsName || "horntail_tools.zip"}
+                          className="bg-emerald-600 hover:bg-emerald-500 hover:scale-[1.02] text-white font-black px-5 py-3 rounded-xl transition duration-200 text-xs md:text-sm shadow-lg text-center flex items-center justify-center space-x-2 active:scale-95 shrink-0"
+                          id="download-horntail-tools"
+                        >
+                          <span>📥 下載遠征工具包 (.zip)</span>
+                        </a>
+                      </div>
+
+                      {isCreator && (
+                        <div className="pt-3.5 border-t border-emerald-800/30 flex flex-wrap items-center justify-between gap-3 text-xs">
+                          <span className="text-emerald-400 font-bold">
+                            🛠️ 遠征團長工具管理：
+                          </span>
+                          <div className="flex items-center space-x-2.5">
+                            <label className={`bg-indigo-600 hover:bg-indigo-500 hover:scale-[1.02] text-white font-black px-3.5 py-2 rounded-xl cursor-pointer transition duration-200 shadow flex items-center space-x-1.5 active:scale-95 ${isUploadingTools ? 'opacity-50 pointer-events-none' : ''}`}>
+                              <span>{isUploadingTools ? "⏳ 正在傳輸中..." : "📤 上傳／變更自訂 ZIP 包"}</span>
+                              <input
+                                type="file"
+                                accept=".zip,.rar,.7z"
+                                className="hidden"
+                                disabled={isUploadingTools}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    handleUploadTools(activeRaid.id, file);
+                                  }
+                                }}
+                              />
+                            </label>
+
+                            {activeRaid.customToolsUrl && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveCustomTools(activeRaid.id)}
+                                className="bg-rose-955/65 hover:bg-rose-900 border border-rose-900/40 text-rose-300 font-extrabold px-3.5 py-2 rounded-xl transition cursor-pointer active:scale-95"
+                              >
+                                🗑️ 移除並回覆預設
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex flex-wrap items-center justify-between gap-3 pt-3 text-sm text-slate-400 border-t border-slate-800 select-none">
                     <div>
