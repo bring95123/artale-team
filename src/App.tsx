@@ -577,7 +577,7 @@ export default function App() {
       const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
       let updatedVotes = [...(raid.votes || [])];
       
-      const userVoteIndex = updatedVotes.findIndex(v => v.userId === customUid);
+      const userVoteIndex = updatedVotes.findIndex(v => v.userId === customUid && v.ign === activeCharacter.ign);
 
       if (userVoteIndex > -1) {
         const userVote = { ...updatedVotes[userVoteIndex] };
@@ -643,7 +643,7 @@ export default function App() {
       try {
         const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
         const updatedVotes = (raid.votes || []).filter((v: any) => 
-          v.userId !== targetUserId
+          !(v.userId === targetUserId && v.ign === targetIgn)
         );
         updateDoc(raidRef, { votes: updatedVotes });
         showToast("已成功採納或移除了此投票紀錄。");
@@ -656,7 +656,7 @@ export default function App() {
   const handleQuickEnroll = async (raidId: string, voter: any) => {
     const raid = raids.find(r => r.id === raidId);
     if (!raid) return;
-    if (raid.participants?.some((p: any) => p.userId === voter.userId)) {
+    if (raid.participants?.some((p: any) => p.userId === voter.userId && p.ign === voter.ign)) {
       showToast(`${voter.ign} 已經在錄取名單中囉！`, "error");
       return;
     }
@@ -666,7 +666,7 @@ export default function App() {
       updatedParticipants.push({
         userId: voter.userId,
         ign: voter.ign,
-        job: voter.job || '未知',
+         job: voter.job || '未知',
         level: voter.level || 120,
         memo: voter.memo || '', 
         discord: voter.discord || null,
@@ -684,7 +684,7 @@ export default function App() {
     if (!raid) return;
     try {
       const updatedParticipants = raid.participants.map((p: any) => {
-        if (p.userId === targetUserId) return { ...p, party: targetParty };
+        if (p.userId === targetUserId && p.ign === targetIgn) return { ...p, party: targetParty };
         return p;
       });
       const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
@@ -700,7 +700,7 @@ export default function App() {
       const targetRaid = raids.find(r => r.id === raidId);
       if (!targetRaid) return;
       try {
-        const updatedParticipants = targetRaid.participants.filter((p: any) => p.userId !== targetUserId);
+        const updatedParticipants = targetRaid.participants.filter((p: any) => !(p.userId === targetUserId && p.ign === targetIgn));
         const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
         updateDoc(raidRef, { participants: updatedParticipants });
         showToast("已成功移出玩家。");
@@ -796,6 +796,8 @@ export default function App() {
       showToast(`移除失敗: ${err.message}`, "error");
     }
   };
+
+
 
   const handleSaveGachaFortune = async (finalResult: any, wishingNote: string) => {
     if (!db || !customUid) return;
@@ -1642,7 +1644,7 @@ export default function App() {
                     const yesVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'yes') || [];
                     const noVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'no') || [];
 
-                    const myVoteRecord = interestVotes.find((v: any) => v.userId === customUid);
+                    const myVoteRecord = interestVotes.find((v: any) => v.userId === customUid && v.ign === activeCharacter.ign);
                     const myChoice = myVoteRecord?.votes?.['interest'] || null;
 
                     const renderVoterBadges = (votersList: any[], emoji: string) => {
@@ -1776,7 +1778,7 @@ export default function App() {
                       const maybeVotes = activeRaid.votes?.filter((v: any) => v.votes?.[idx] === 'maybe') || [];
                       const noVotes = activeRaid.votes?.filter((v: any) => v.votes?.[idx] === 'no') || [];
 
-                      const myVoteRecord = activeRaid.votes?.find((v: any) => v.userId === customUid);
+                      const myVoteRecord = activeRaid.votes?.find((v: any) => v.userId === customUid && v.ign === activeCharacter.ign);
                       const myChoice = myVoteRecord?.votes?.[idx] || null;
 
                       const isFinalized = activeRaid.finalTimeIndex === idx;
