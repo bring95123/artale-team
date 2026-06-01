@@ -7,7 +7,7 @@ const ALMANAC_SHOULD_DOS = [
   '找公會主教吸吸歐氣 (幸運Buff拉滿！)',
   '組隊推倒普通黑龍王 (隊伍掉寶率加倍！)',
   '在弓箭手村發呆吟詩 (心誠則靈逢凶化吉！)',
-  '洗三排完美星潛能 (運勢在此時達到頂點！)',
+  '合成頂級屬性武器 (匠人之心附體必出神兵！)',
   '在玩具城與戰友聚會 (友情羈絆助你一臂之力！)',
   '熱心帶路新手解任務 (默默累積巨大好運！)',
   '在交易市場開市大吉 (高價拋售滯銷裝備！)'
@@ -15,7 +15,7 @@ const ALMANAC_SHOULD_DOS = [
 
 const ALMANAC_SHOULD_NOT_DOS = [
   '深夜點 30% 卷軸對賭 (極高機率爆炸！)',
-  '跟粉紅蝴蝶 Pink Bean 對視 (心神易被反射動搖！)',
+  '挑戰闇黑龍王時踩到尾巴炸死 (痛失整局遠征體驗！)',
   '在冰原雪域裸奔發呆 (容易降低自身幸運值！)',
   '忘記喝神秘補油藥水 (當心石碑凌空墜落！)',
   '隻身挑戰 Papulatus 困難 (直接送命回村！)',
@@ -309,27 +309,36 @@ export default function GachaSection({
 
     // 5. Fortune status layout and colors
     const fortuneGrad = ctx.createLinearGradient(35, 180, 400, 585);
-    if (fortuneStatus.includes('超大吉')) {
+    if (fortuneStatus.includes('大吉')) {
+      // Golden solar flare for Grand Fortune
       fortuneGrad.addColorStop(0, '#ea580c');
-      fortuneGrad.addColorStop(1, '#d97706');
-    } else if (fortuneStatus.includes('大吉')) {
+      fortuneGrad.addColorStop(0.5, '#d97706');
+      fortuneGrad.addColorStop(1, '#fbbf24');
+    } else if (fortuneStatus.includes('中吉')) {
+      // Lush Emerald for Medium Fortune
       fortuneGrad.addColorStop(0, '#10b981');
       fortuneGrad.addColorStop(1, '#0d9488');
-    } else if (fortuneStatus.includes('中吉')) {
+    } else if (fortuneStatus.includes('小吉')) {
+      // Royal sapphire blue for Small Fortune
       fortuneGrad.addColorStop(0, '#2563eb');
       fortuneGrad.addColorStop(1, '#4f46e5');
+    } else if (fortuneStatus.includes('末吉')) {
+      // Sunny warm amber for Minor Fortune
+      fortuneGrad.addColorStop(0, '#f97316');
+      fortuneGrad.addColorStop(1, '#ca8a04');
     } else if (fortuneStatus.includes('吉')) {
+      // Stable slate gray for Good Fortune
       fortuneGrad.addColorStop(0, '#475569');
       fortuneGrad.addColorStop(1, '#334155');
-    } else if (fortuneStatus.includes('末吉')) {
-      fortuneGrad.addColorStop(0, '#d97706');
-      fortuneGrad.addColorStop(1, '#ca8a04');
-    } else if (fortuneStatus.includes('平') || fortuneStatus.includes('放空')) {
-      fortuneGrad.addColorStop(0, '#7c3aed');
-      fortuneGrad.addColorStop(1, '#4f46e5');
-    } else if (fortuneStatus.includes('凶')) {
+    } else if (fortuneStatus.includes('大凶')) {
+      // Doom void crimson for Catastrophic Fortune
       fortuneGrad.addColorStop(0, '#dc2626');
-      fortuneGrad.addColorStop(1, '#9f1239');
+      fortuneGrad.addColorStop(0.5, '#7f1d1d');
+      fortuneGrad.addColorStop(1, '#3f0712');
+    } else if (fortuneStatus.includes('凶')) {
+      // Twilight amethyst purple for Bad Fortune
+      fortuneGrad.addColorStop(0, '#7c3aed');
+      fortuneGrad.addColorStop(1, '#5b21b6');
     } else {
       fortuneGrad.addColorStop(0, '#475569');
       fortuneGrad.addColorStop(1, '#1e293b');

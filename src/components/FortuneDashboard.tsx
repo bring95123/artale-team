@@ -32,13 +32,14 @@ interface FortuneDashboardProps {
 // Map fortune status to a numerical luck score for statistical aggregate analysis
 const getLuckScore = (status: string): number => {
   const s = status || '';
-  if (s.includes('超大吉')) return 100;
-  if (s.includes('大吉')) return 85;
-  if (s.includes('中吉')) return 70;
+  if (s.includes('超大吉') || s.includes('大吉')) return 100;
+  if (s.includes('中吉')) return 85;
+  if (s.includes('小吉')) return 70;
   if (s.includes('吉')) return 55;
   if (s.includes('末吉')) return 40;
   if (s.includes('平')) return 25;
-  if (s.includes('凶')) return 10;
+  if (s.includes('大凶')) return 5;
+  if (s.includes('凶')) return 15;
   return 50;
 };
 
@@ -220,23 +221,23 @@ export default function FortuneDashboard({
   const gradeDistribution = useMemo(() => {
     const targetList = fortunesList.filter(r => timeFilter === 'today' ? isTodayPull(r.timestamp) : true);
     const countsRef: { [status: string]: number } = {
-      '超大吉!': 0,
       '大吉': 0,
       '中吉': 0,
+      '小吉': 0,
       '吉': 0,
       '末吉': 0,
-      '平': 0,
-      '凶': 0
+      '凶': 0,
+      '大凶': 0
     };
 
     targetList.forEach(r => {
       const s = r.fortuneStatus || '';
-      if (s.includes('超大吉')) countsRef['超大吉!']++;
-      else if (s.includes('大吉')) countsRef['大吉']++;
+      if (s.includes('超大吉') || s.includes('大吉')) countsRef['大吉']++;
       else if (s.includes('中吉')) countsRef['中吉']++;
-      else if (s.includes('吉')) countsRef['吉']++;
+      else if (s.includes('小吉')) countsRef['小吉']++;
       else if (s.includes('末吉')) countsRef['末吉']++;
-      else if (s.includes('平')) countsRef['平']++;
+      else if (s.includes('平') || s.includes('吉')) countsRef['吉']++;
+      else if (s.includes('大凶')) countsRef['大凶']++;
       else if (s.includes('凶')) countsRef['凶']++;
     });
 
@@ -349,13 +350,13 @@ export default function FortuneDashboard({
                 gradeDistribution.map(item => {
                   let barColor = 'bg-slate-600';
                   let textColor = 'text-slate-400';
-                  if (item.grade === '超大吉!') { barColor = 'bg-radial from-orange-400 to-amber-500'; textColor = 'text-amber-400 font-extrabold'; }
-                  else if (item.grade === '大吉') { barColor = 'bg-gradient-to-r from-emerald-500 to-teal-400'; textColor = 'text-emerald-400 font-bold'; }
-                  else if (item.grade === '中吉') { barColor = 'bg-gradient-to-r from-blue-500 to-indigo-500'; textColor = 'text-blue-400'; }
+                  if (item.grade === '大吉') { barColor = 'bg-gradient-to-r from-orange-400 to-amber-500'; textColor = 'text-amber-400 font-extrabold'; }
+                  else if (item.grade === '中吉') { barColor = 'bg-gradient-to-r from-emerald-500 to-teal-400'; textColor = 'text-emerald-400 font-bold'; }
+                  else if (item.grade === '小吉') { barColor = 'bg-gradient-to-r from-blue-500 to-indigo-500'; textColor = 'text-blue-400 font-semibold'; }
                   else if (item.grade === '吉') { barColor = 'bg-slate-400'; textColor = 'text-slate-300'; }
-                  else if (item.grade === '末吉') { barColor = 'bg-orange-500/80'; textColor = 'text-orange-400'; }
-                  else if (item.grade === '平') { barColor = 'bg-purple-600'; textColor = 'text-purple-400'; }
-                  else if (item.grade === '凶') { barColor = 'bg-red-650'; textColor = 'text-rose-500 font-bold'; }
+                  else if (item.grade === '末吉') { barColor = 'bg-orange-500/80'; textColor = 'text-orange-450'; }
+                  else if (item.grade === '凶') { barColor = 'bg-purple-600'; textColor = 'text-purple-400'; }
+                  else if (item.grade === '大凶') { barColor = 'bg-red-650'; textColor = 'text-rose-500 font-bold'; }
 
                   return (
                     <div key={item.grade} className="flex items-center gap-3">
@@ -588,9 +589,9 @@ export default function FortuneDashboard({
                 </div>
               ) : (
                 filteredRecords.map(record => {
-                  const luckGrade = record.fortuneStatus || '平';
-                  const isGoldGlow = luckGrade.includes('超大吉');
-                  const isGoodGlow = luckGrade.includes('大吉');
+                  const luckGrade = record.fortuneStatus || '吉';
+                  const isGoldGlow = luckGrade.includes('大吉') || luckGrade.includes('超大吉');
+                  const isGoodGlow = luckGrade.includes('中吉') || luckGrade.includes('小吉');
 
                   // Funny Maple default wish if empty
                   const defaultWishText = record.wishingNote 

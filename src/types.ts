@@ -111,8 +111,7 @@ export const DEFAULT_BOSS_LIST: Boss[] = [
   { id: 'zakum_normal', name: '普通炎魔 (Normal Zakum)', icon: '🔥', color: 'from-amber-600 to-red-700', maxPlayers: 6, desc: '最經典 of 8 手炎魔，需要良好調度。' },
   { id: 'papu_normal', name: '普通拉圖斯 (Normal Papulatus)', icon: '⏰', color: 'from-blue-550 to-indigo-600', maxPlayers: 6, desc: '需要注意計時器與地圖炸彈。' },
   { id: 'papu_hard', name: '困難拉圖斯 (Hard Papulatus)', icon: '⏰', color: 'from-violet-600 to-fuchsia-850', maxPlayers: 6, desc: 'Artale 超高難度挑戰，極度考驗輸出與走位。' },
-  { id: 'horntail', name: '闇黑龍王 (Horntail)', icon: '🐉', color: 'from-emerald-600 to-teal-800', maxPlayers: 12, desc: '三顆龙头與多部位挑戰，誘惑控制是關鍵。' },
-  { id: 'pink_bean', name: '蝴蝶(艾畢) (Pink Bean)', icon: '🦋', color: 'from-pink-400 to-rose-600', maxPlayers: 12, desc: '目前終極 Boss，雕像攻略與反射考驗。' }
+  { id: 'horntail', name: '闇黑龍王 (Horntail)', icon: '🐉', color: 'from-emerald-600 to-teal-800', maxPlayers: 12, desc: '三顆龙头與多部位挑戰，誘惑控制是關鍵。' }
 ];
 
 export const BOSS_EMOJIS_LIST = ['🔥', '⏰', '🐉', '🦋', '👹', '💀', '🐙', '👾', '🍁', '⚔️', '🛡️', '👑', '🧙', '🔮', '💎', '🦊', '🦁', '🦉', '🌋'];
@@ -155,7 +154,7 @@ export const DEFAULT_JOB_CATEGORIES: { [category: string]: { [tier: string]: str
 };
 
 export const GACHA_FORTUNES: GachaFortune[] = [
-  { status: '🌟 【氣運沖天】大吉', color: 'from-yellow-400 to-amber-500 bg-amber-500/10 text-amber-300 border-amber-400/40', dcColor: 16766720, desc: '今天氣運沖天！衝捲必過，打寶率提升 999%！Pink Bean 看到你都瑟瑟發抖，請直接點 10% 捲！' },
+  { status: '🌟 【氣運沖天】大吉', color: 'from-yellow-400 to-amber-500 bg-amber-500/10 text-amber-300 border-amber-400/40', dcColor: 16766720, desc: '今天氣運沖天！衝捲必過，打寶率提升 999%！闇黑龍王看到你都瑟瑟發抖，請直接點 10% 捲！' },
   { status: '🟢 【歐氣滿滿】中吉', color: 'from-emerald-500 to-teal-600 bg-emerald-500/10 text-emerald-400 border-emerald-400/40', dcColor: 3066993, desc: '諸事皆宜，出團隨手撿到頂級母書與裝備，點捲成功機率大增。快去多扶老奶奶過馬路維持歐氣！' },
   { status: '🔵 【春風得意】小吉', color: 'from-blue-550 to-indigo-600 bg-blue-500/10 text-blue-400 border-blue-400/30', dcColor: 3447003, desc: '平穩進步的幸運日，適合與老戰友一起組隊推拉圖斯，走位靈活不容易發生地圖事故。' },
   { status: '⚪ 【清爽舒暢】吉', color: 'from-slate-400 to-slate-600 bg-slate-500/10 text-slate-300 border-slate-500/20', dcColor: 10197915, desc: '運勢良好，野外打怪掉寶率穩定。雖然不會一夜暴富，但今天會有小驚喜。' },
@@ -166,7 +165,7 @@ export const GACHA_FORTUNES: GachaFortune[] = [
 
 export const FORTUNE_DESCRIPTIONS: { [status: string]: string[] } = {
   '🌟 【氣運沖天】大吉': [
-    '今天氣運沖天！衝捲必過，打寶率提升 999%！Pink Bean 看到你都瑟瑟發抖，請直接點 10% 捲！',
+    '今天氣運沖天！衝捲必過，打寶率提升 999%！闇黑龍王看到你都瑟瑟發抖，請直接點 10% 捲！',
     '神明在耳邊悄悄指點：今日點裝，一發入魂！全場裝備神光萬丈，千萬不要浪費這驚天好運！',
     '全身散發著不尋常的金色流光，路過的野怪都會自動掉落神級卷軸與紫裝！今日你就是楓之谷之神！',
     '天選之人！幸運女神親自為你倒茶！今日強烈推薦點爆 10% 或 30% 神卷，絕對能見證奇蹟誕生！'
@@ -216,7 +215,7 @@ export const GACHA_SPOTS = [
   '天空之城 塔頂女神雕像前 ☁️ (最接近女神的雲端神殿，吸飽高空星空靈氣精華！)',
   '冰原雪域長老公館暖爐旁 ❄️ (在極寒低溫中點卷，低溫冷卻能保證裝備防爆防熱！)',
   '玩具城時間通道扭曲處 ⏰ (扭曲時空的奇幻入口，倒轉厄運、修正非酋倒楣氣場！)',
-  '地球防衛總部 愛斯卡爾艙外 🛸 (利用外星超高科技雷射加護，大幅激發卷軸電磁潛能！)',
+  '地球防衛總部 愛斯卡爾艙外 🛸 (利用外星超高科技雷射加護，大幅激發卷軸波段能量！)',
   '童話村圖書館老書台 📖 (沉浸在古老東方傳說的墨香中，神明庇佑必得極品！)',
   '西門町捷運站三號出口 🚇 (在最潮的台北街頭喧囂中，用時尚潮流引領卷軸光學！)',
   '台北101 頂樓戶外觀景台 🏙️ (登上高塔之巔俯瞰眾生，一鳴驚人點爆神級白字屬性！)',

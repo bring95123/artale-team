@@ -1044,7 +1044,6 @@ export default function App() {
     if (bossId === 'papu_normal') return '普拉';
     if (bossId === 'papu_hard') return '困拉';
     if (bossId === 'horntail') return '龍王';
-    if (bossId === 'pink_bean') return '蝴蝶';
     const cleanName = bossName ? bossName.split(' (')[0] : '';
     return cleanName.length > 4 ? cleanName.substring(0, 4) : cleanName;
   };

@@ -269,7 +269,7 @@ export default function SynergyAnalyzer({
 
     const squishies = participants.filter(p => p.party !== 'reserve' && (p.job === '夜使者' || p.job === '箭神' || p.job === '暗影神偷' || p.job === '神射手'));
 
-    if (boss && ['horntail', 'pink_bean', 'papu_hard'].includes(boss.id) && squishies.length > 0 && totalDks === 0) {
+    if (boss && ['horntail', 'papu_hard'].includes(boss.id) && squishies.length > 0 && totalDks === 0) {
       list.push(`❤️ 滅團高危警告：挑戰高難重案王 **${boss.name}** 生存壓力極大！隊中有皮脆紙防的盜賊與弓手，但**全主力隊均無【黑騎士】提供神聖之火 (HB)**，極易陷入大絕招直接空手秒殺的慘劇。`);
     }
 
