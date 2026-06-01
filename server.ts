@@ -181,6 +181,80 @@ async function startServer() {
     }
   });
 
+  // API Route - Report Issue to Discord Webhook
+  app.post("/api/discord/report-issue", async (req: express.Request, res: express.Response) => {
+    const { webhookUrl, title, description, severity, reporterIgn, reporterJob, reporterLevel, reporterDiscordId, reporterDiscordUsername, pageUrl } = req.body;
+
+    if (!webhookUrl) {
+      return res.status(400).json({ error: "Missing webhookUrl" });
+    }
+    if (!description) {
+      return res.status(400).json({ error: "Missing issue description" });
+    }
+
+    try {
+      let embedColor = 3447003; // Suggestion Blue
+      let severityLabel = "🔵 優化與建議";
+      if (severity === "blocker") {
+        embedColor = 15158332; // Blocker Red
+        severityLabel = "🔴 嚴重阻礙 (Blocker)";
+      } else if (severity === "bug") {
+        embedColor = 15105570; // Bug Orange
+        severityLabel = "🟡 功能異常 (Bug)";
+      }
+
+      const reporterInfo = reporterIgn 
+        ? `🎮 IGN: **${reporterIgn}** (${reporterJob || '未知'} Lv.${reporterLevel || 120})`
+        : "🎮 客人 / 未登入身分";
+
+      const discordInfo = reporterDiscordId 
+        ? `🤖 Discord: <@${reporterDiscordId}> (${reporterDiscordUsername || '未知'})`
+        : "🤖 Discord: 未登錄/未連動";
+
+      const fields = [
+        { name: "📋 狀況描述", value: description.substring(0, 1024), inline: false },
+        { name: "⚠️ 嚴重程度", value: severityLabel, inline: true },
+        { name: "👤 回報成員", value: `${reporterInfo}\n${discordInfo}`, inline: false }
+      ];
+
+      if (pageUrl) {
+        fields.push({ name: "🔗 來源網址", value: pageUrl, inline: true });
+      }
+
+      const payload = {
+        embeds: [
+          {
+            title: title ? `🐛 網頁問題/建議回報：${title.substring(0, 250)}` : "🐛 收到新的 NyxShade 網頁問題或建議回報！",
+            color: embedColor,
+            fields,
+            timestamp: new Date().toISOString(),
+            footer: {
+              text: "NyxShade Expedition System Bug Tracker"
+            }
+          }
+        ]
+      };
+
+      const discRes = await fetch(webhookUrl.trim(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!discRes.ok) {
+        const errorText = await discRes.text();
+        throw new Error(`Discord Webhook returned status ${discRes.status}: ${errorText}`);
+      }
+
+      return res.json({ success: true });
+    } catch (error: any) {
+      console.error("Failed to report issue to Discord Webhook:", error);
+      return res.status(500).json({ error: error.message || "Failed to deliver report to Discord" });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

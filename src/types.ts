@@ -80,6 +80,7 @@ export interface DiscordConfig {
   mode: 'implicit' | 'code';
   apiEndpoint: string;
   webhookUrl: string;
+  issueWebhookUrl?: string;
   webhooks?: WebhookChannel[];
   botToken?: string;
   botChannelId?: string;

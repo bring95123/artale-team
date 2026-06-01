@@ -135,6 +135,13 @@ export default function App() {
   // Floating Chat control
   const [isChatOpen, setIsChatOpen] = useState(false);
 
+  // Issue Report State
+  const [showIssueReportModal, setShowIssueReportModal] = useState(false);
+  const [issueTitle, setIssueTitle] = useState('');
+  const [issueDescription, setIssueDescription] = useState('');
+  const [issueSeverity, setIssueSeverity] = useState<'blocker' | 'bug' | 'suggestion'>('bug');
+  const [isSendingIssue, setIsSendingIssue] = useState(false);
+
   // File uploading states
   const [isUploadingTools, setIsUploadingTools] = useState(false);
 
@@ -826,6 +833,59 @@ export default function App() {
     }
   };
 
+  const handleSendIssueReport = async () => {
+    if (!issueDescription.trim()) {
+      showToast("請輸入問題或功能建議的描述內容！", "error");
+      return;
+    }
+
+    const reportWebhook = discordConfig?.issueWebhookUrl || discordConfig?.webhookUrl;
+    if (!reportWebhook) {
+      showToast("⚠️ 系統管理員尚未配置 Discord Webhook 廣播通道，暫時無法自動傳送問題回報！", "error");
+      return;
+    }
+
+    setIsSendingIssue(true);
+    try {
+      const activeChar = profile.characters[profile.activeCharacterIndex] || { ign: '', job: '', level: 0 };
+      const response = await fetch("/api/discord/report-issue", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          webhookUrl: reportWebhook,
+          title: issueTitle.trim() || undefined,
+          description: issueDescription.trim(),
+          severity: issueSeverity,
+          reporterIgn: activeChar.ign || undefined,
+          reporterJob: activeChar.job || undefined,
+          reporterLevel: Number(activeChar.level) || undefined,
+          reporterDiscordId: discordUser?.id || undefined,
+          reporterDiscordUsername: discordUser?.username || undefined,
+          pageUrl: window.location.href
+        })
+      });
+
+      if (response.ok) {
+        showToast("🎉 感謝您的回報！已成功透過 Discord 機器人傳送至管理者頻道！", "success");
+        // Clear inputs and close
+        setIssueTitle('');
+        setIssueDescription('');
+        setIssueSeverity('bug');
+        setShowIssueReportModal(false);
+      } else {
+        const errInfo = await response.json();
+        throw new Error(errInfo.error || "傳輸失敗");
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(`❌ 回報傳送失敗：${err.message}`, "error");
+    } finally {
+      setIsSendingIssue(false);
+    }
+  };
+
   const sendDiscordRaidWebhook = async (raid: any, actionType: 'finalize_time' | 'post_roster', extraData: any = {}) => {
     if (!discordConfig || !discordConfig.webhookUrl) {
       showToast("⚠️ 請先在管理者後台配置 Discord Webhook URL！", "error");
@@ -1137,6 +1197,14 @@ export default function App() {
                 {dbStatus === 'connected' && <span className="bg-emerald-500/10 text-emerald-450 border border-emerald-500/20 px-2.5 py-1 rounded-lg text-[11px] font-bold">🟢 連線成功</span>}
                 {dbStatus === 'error' && <span className="bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2.5 py-1 rounded-lg text-[11px] font-bold">⚠️ 連線異常</span>}
               </div>
+
+              <button
+                onClick={() => setShowIssueReportModal(true)}
+                className="bg-slate-900/80 hover:bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-rose-900/50 rounded-xl px-3 py-1.5 flex items-center transition text-xs shadow-md h-10 select-none text-rose-305 text-rose-400 font-extrabold cursor-pointer"
+                title="遇到網頁故障或有功能點子？點此立即透過 Discord 轉傳管道回報！"
+              >
+                <span className="mr-1">🐛</span> 問題回報
+              </button>
 
               {profileLoaded ? (
                 <div className="flex items-center space-x-2">
@@ -2192,7 +2260,7 @@ export default function App() {
       {/* Footer controls */}
       <footer className="max-w-6xl mx-auto w-full px-4 py-8 text-center text-xs text-slate-700 border-t border-slate-900 mt-10 font-semibold select-none">
         <p>© 2026 NyxShade 遠征隊. All Rights Reserved.</p>
-        <div className="mt-2 space-x-3">
+        <div className="mt-2 space-x-3 flex items-center justify-center flex-wrap gap-y-1">
           {isAdminLoggedIn ? (
             <>
               <button onClick={() => setShowAdminConsole(true)} className="text-amber-500 hover:text-amber-400 hover:underline font-bold transition">🔑 開啟管理者控制台</button>
@@ -2202,6 +2270,8 @@ export default function App() {
           ) : (
             <button onClick={() => setShowAdminLoginModal(true)} className="text-slate-600 hover:text-slate-500 hover:underline transition">🔑 系統管理者登入</button>
           )}
+          <span className="text-slate-800">•</span>
+          <button onClick={() => setShowIssueReportModal(true)} className="text-rose-405 text-rose-400 hover:text-rose-300 hover:underline transition font-bold select-none cursor-pointer">🐛 問題或建議回報</button>
         </div>
       </footer>
 
@@ -2330,6 +2400,139 @@ export default function App() {
         handleResetConfig={handleResetConfig}
         showToast={showToast}
       />
+
+      {/* ==================== BUG / FEATURE SUGGESTION REPORT MODAL ==================== */}
+      {showIssueReportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm select-none overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl relative my-4 font-sans text-slate-100">
+            <button 
+              type="button" 
+              onClick={() => setShowIssueReportModal(false)}
+              className="absolute right-4 top-4 text-slate-400 hover:text-white text-xl"
+            >
+              ✕
+            </button>
+            <h3 className="text-lg md:text-xl font-extrabold text-rose-400 mb-1 flex items-center gap-2">
+              <span>🐛 網頁故障與功能改版建議回報</span>
+            </h3>
+            <p className="text-[11px] text-slate-400 mb-4">
+              當您使用網頁時遭遇 Bug、連線失效，或是對出團功能有任何新靈感點子，皆可在此送出！系統將自動排程，透過 Discord Webhook 幫您直接傳遞。
+            </p>
+
+            <form onSubmit={(e) => { e.preventDefault(); handleSendIssueReport(); }} className="space-y-4 text-xs font-bold leading-normal">
+              <div>
+                <label className="block text-xs font-extrabold text-slate-300 pr-1.5 pb-1.5">
+                  📌 回報主旨 (問題或建議簡述)
+                </label>
+                <input
+                  type="text"
+                  value={issueTitle}
+                  onChange={(e) => setIssueTitle(e.target.value)}
+                  placeholder="例如：排班名單跑版、登記新角色點不開、希望新增揪團通知..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-100 focus:outline-none focus:border-indigo-550 focus:border-indigo-500 placeholder-slate-700"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold text-slate-300 pr-1.5 pb-1.5">
+                  ⚠️ 嚴重程度
+                </label>
+                <div className="grid grid-cols-3 gap-2 select-none">
+                  {[
+                    { value: 'suggestion', label: '🔵 功能優化建議', desc: '新構想或非致命優化' },
+                    { value: 'bug', label: '🟡 網頁功能異常', desc: '按鈕失靈或資料有誤' },
+                    { value: 'blocker', label: '🔴 嚴重阻礙使用', desc: '網頁當機或完全進不去' }
+                  ].map((item) => (
+                    <button
+                      key={item.value}
+                      type="button"
+                      onClick={() => setIssueSeverity(item.value as any)}
+                      className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 leading-tight ${
+                        issueSeverity === item.value 
+                          ? 'bg-rose-950/20 border-rose-500/80 text-rose-300 shadow'
+                          : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-950/80 hover:text-slate-200'
+                      }`}
+                    >
+                      <span className="font-extrabold text-xs">{item.label}</span>
+                      <span className="text-[9px] text-slate-500 font-normal">{item.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold text-slate-300 pr-1.5 pb-1.5">
+                  📋 狀況詳細描述 <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  value={issueDescription}
+                  onChange={(e) => setIssueDescription(e.target.value)}
+                  placeholder="請在此詳細填寫您所遇到的狀況、操作步驟，或希望加入的新功能構想內容..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-100 focus:outline-none focus:border-indigo-505 placeholder-slate-700 font-sans leading-relaxed"
+                />
+              </div>
+
+              {/* User Identity Preview Frame */}
+              <div className="p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl space-y-1.5 font-bold">
+                <span className="text-[10px] text-slate-500 block">👤 回報身分關聯 (送出時將自動附加此身分資訊以便客服回覆)：</span>
+                <div className="flex flex-wrap items-center gap-3.5 text-[11px] text-slate-300">
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-slate-400">當前角色:</span>
+                    {activeCharacter.ign ? (
+                      <span className="text-emerald-400 font-extrabold flex items-center gap-1">
+                        <JobIcon jobName={activeCharacter.job} sizeClass="w-3.5 h-3.5" />
+                        {activeCharacter.ign} ({activeCharacter.job} Lv.{activeCharacter.level})
+                      </span>
+                    ) : (
+                      <span className="text-yellow-500/90 font-bold">未設定身分 (客人)</span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-slate-400">Discord:</span>
+                    {discordUser ? (
+                      <span className="text-indigo-400 font-black">
+                        @{discordUser.username}
+                      </span>
+                    ) : (
+                      <span className="text-slate-500 font-normal">未連結 Discord</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex space-x-3 pt-2 select-none">
+                <button 
+                  type="button" 
+                  onClick={() => setShowIssueReportModal(false)} 
+                  className="flex-1 bg-slate-800 hover:bg-slate-750 border border-slate-700 py-2.5 rounded-xl text-slate-300 transition"
+                  disabled={isSendingIssue}
+                >
+                  取消
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-1 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 py-2.5 rounded-xl text-white font-extrabold transition shadow-lg flex items-center justify-center space-x-2"
+                  disabled={isSendingIssue}
+                >
+                  {isSendingIssue ? (
+                    <>
+                      <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                      <span>正在傳送回報中...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>🚀 傳送並回報至 Discord</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ==================== FORM MODAL: CREATE EXPEDITION ==================== */}
       {isCreating && (

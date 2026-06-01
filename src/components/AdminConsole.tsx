@@ -379,6 +379,17 @@ export function AdminConsoleModal({
                   />
                 </div>
 
+                <div>
+                  <label className="block text-rose-400 mb-1.5 font-bold">🐛 問題與功能建議回報 Webhook URL</label>
+                  <input
+                    type="text"
+                    placeholder="在此貼上接收問題回報的專用 Discord Webhook (若留空則預設發送至主要廣播頻道)"
+                    value={discordConfig?.issueWebhookUrl || ''}
+                    onChange={(e) => setDiscordConfig({ ...discordConfig, issueWebhookUrl: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none font-mono placeholder-slate-700"
+                  />
+                </div>
+
                 <div className="border-t border-slate-800 pt-4 mt-2">
                   <label className="block text-indigo-400 mb-1 font-black">🚀 自訂其它 Webhook 廣播頻道</label>
                   <p className="text-[10px] text-slate-400 mb-2">可自訂多個特定用途頻道 Webhook (例如 #求籤頻道、#閒聊、#打寶回報)，玩家抽籤完即可靈活選擇丟至指定頻道！</p>
