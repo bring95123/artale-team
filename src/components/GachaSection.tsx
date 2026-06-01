@@ -2,6 +2,67 @@ import React, { useState, useEffect } from 'react';
 import { GachaResult, Character, DiscordUser, DiscordConfig, GACHA_FORTUNES, GACHA_SPOTS, FORTUNE_DESCRIPTIONS } from '../types';
 import FortuneDashboard from './FortuneDashboard';
 
+const ALMANAC_SHOULD_DOS = [
+  '衝 10% 神秘卷軸 (絕地反擊大機率過！)',
+  '找公會主教吸吸歐氣 (幸運Buff拉滿！)',
+  '組隊推倒普通黑龍王 (隊伍掉寶率加倍！)',
+  '在弓箭手村發呆吟詩 (心誠則靈逢凶化吉！)',
+  '洗三排完美星潛能 (運勢在此時達到頂點！)',
+  '在玩具城與戰友聚會 (友情羈絆助你一臂之力！)',
+  '熱心帶路新手解任務 (默默累積巨大好運！)',
+  '在交易市場開市大吉 (高價拋售滯銷裝備！)'
+];
+
+const ALMANAC_SHOULD_NOT_DOS = [
+  '深夜點 30% 卷軸對賭 (極高機率爆炸！)',
+  '跟粉紅蝴蝶 Pink Bean 對視 (心神易被反射動搖！)',
+  '在冰原雪域裸奔發呆 (容易降低自身幸運值！)',
+  '忘記喝神秘補油藥水 (當心石碑凌空墜落！)',
+  '隻身挑戰 Papulatus 困難 (直接送命回村！)',
+  '與不熟識的商人私下交易 (提防被老中醫誆騙！)',
+  '在深夜開罐子鑑定裝備 (心浮氣躁容易血虧！)',
+  '未解日常任務就去衝裝 (會降低幸運神官好感度！)'
+];
+
+const ALMANAC_COLORS = [
+  '烈焰紅 🔴 (火力全開，傷害直接翻倍！)',
+  '深海藍 🔵 (沉著冷靜，微操走位如神！)',
+  '翡翠綠 🟢 (生機盎然，野外掉寶率加乘！)',
+  '幻影紫 🟣 (氣質非凡，自由市場遇貴人！)',
+  '琥珀金 🟡 (財運亨通，金幣掉落叮噹響！)',
+  '晶瑩白 ⚪ (光芒萬丈，點裝防爆安全！)',
+  '黯夜黑 ⚫ (大智若愚，神明在暗中呵護！)'
+];
+
+const ALMANAC_ITEMS = [
+  '初心藍嫩寶殼 (初心者的最強防爆開運符)',
+  '百分百滿溢的超級藥水 (喝下瞬間重拾自信)',
+  '主教贈與的暖心祝福光環 (完美驅散霉運)',
+  '百分之十傳說卷軸 (觸發不尋常大暴擊)',
+  '玩具城限定精緻落櫻洋傘 (遮風避雨擋水逆)',
+  '粉色發光電吉他 (彈奏高雅的歐氣樂章)',
+  '拉圖斯褪色鬧鐘指針 (可微調好運時軸偏角)',
+  '黃金海岸的椰汁刨冰 (清熱消心魔，點卷最順！)'
+];
+
+const ALMANAC_PARTNERS = [
+  '法師類 (主教/冰雷/火毒 - 淨化妖邪，好運連連)',
+  '劍士類 (英雄/聖騎士/黑騎士 - 提供金石不壞防護)',
+  '盜賊類 (夜使者/暗影神偷 - 隱身伺機切入歐氣線)',
+  '弓箭手類 (箭神/神射手 - 遠程精準鎖定幸運星)',
+  '海盜類 (拳霸/槍神 - 火力重炮，橫掃倒楣霉運)'
+];
+
+const generateAlmanac = () => {
+  return {
+    luckyColor: ALMANAC_COLORS[Math.floor(Math.random() * ALMANAC_COLORS.length)],
+    luckyItem: ALMANAC_ITEMS[Math.floor(Math.random() * ALMANAC_ITEMS.length)],
+    shouldDo: ALMANAC_SHOULD_DOS[Math.floor(Math.random() * ALMANAC_SHOULD_DOS.length)],
+    shouldNotDo: ALMANAC_SHOULD_NOT_DOS[Math.floor(Math.random() * ALMANAC_SHOULD_NOT_DOS.length)],
+    luckyPartner: ALMANAC_PARTNERS[Math.floor(Math.random() * ALMANAC_PARTNERS.length)]
+  };
+};
+
 interface GachaSectionProps {
   activeCharacter: Character;
   discordUser: DiscordUser | null;
@@ -122,7 +183,8 @@ export default function GachaSection({
       setGachaResult({
         fortune: randomFortune,
         luckyNumbers: generateLuckyNumbers(),
-        spot: randomSpot
+        spot: randomSpot,
+        almanac: generateAlmanac()
       });
 
       count++;
@@ -144,7 +206,8 @@ export default function GachaSection({
         const finalResult = {
           fortune: finalFortune,
           luckyNumbers: finalNumbers,
-          spot: finalSpot
+          spot: finalSpot,
+          almanac: generateAlmanac()
         };
 
         setGachaResult(finalResult);
@@ -170,10 +233,11 @@ export default function GachaSection({
     spot: string,
     ign: string,
     job: string,
-    level: number
+    level: number,
+    almanac?: any
   ): Promise<Blob> => {
     const width = 800;
-    const height = 500;
+    const height = 635;
 
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -191,13 +255,13 @@ export default function GachaSection({
 
     // 2. Beautiful glowing neon border
     ctx.strokeStyle = 'rgba(99, 102, 241, 0.45)';
-    ctx.lineWidth = 8;
-    ctx.strokeRect(4, 4, width - 8, height - 8);
+    ctx.lineWidth = 10;
+    ctx.strokeRect(5, 5, width - 10, height - 10);
 
     // Inner gold dashed border
     ctx.strokeStyle = 'rgba(251, 191, 36, 0.25)';
     ctx.lineWidth = 2;
-    ctx.strokeRect(12, 12, width - 24, height - 24);
+    ctx.strokeRect(15, 15, width - 30, height - 30);
 
     const drawRoundedRect = (x: number, y: number, w: number, h: number, r: number, fill: string | CanvasGradient, stroke?: string) => {
       ctx.beginPath();
@@ -244,7 +308,7 @@ export default function GachaSection({
     ctx.fillText(`( ${job}  Lv.${level} )`, 135 + ctx.measureText(ign).width + 12, 146);
 
     // 5. Fortune status layout and colors
-    const fortuneGrad = ctx.createLinearGradient(35, 180, 400, 450);
+    const fortuneGrad = ctx.createLinearGradient(35, 180, 400, 585);
     if (fortuneStatus.includes('超大吉')) {
       fortuneGrad.addColorStop(0, '#ea580c');
       fortuneGrad.addColorStop(1, '#d97706');
@@ -271,7 +335,7 @@ export default function GachaSection({
       fortuneGrad.addColorStop(1, '#1e293b');
     }
 
-    drawRoundedRect(35, 180, 400, 255, 16, fortuneGrad);
+    drawRoundedRect(35, 180, 350, 405, 16, fortuneGrad);
 
     ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
     ctx.font = 'bold 11px Arial, "Microsoft JhengHei", sans-serif';
@@ -282,7 +346,7 @@ export default function GachaSection({
     ctx.fillText(fortuneStatus, 55, 252);
 
     // Draw wrapped text inside state card
-    drawRoundedRect(52, 275, 365, 140, 12, 'rgba(0, 0, 0, 0.42)', 'rgba(255, 255, 255, 0.15)');
+    drawRoundedRect(52, 275, 315, 290, 12, 'rgba(0, 0, 0, 0.42)', 'rgba(255, 255, 255, 0.15)');
     ctx.fillStyle = '#ffffff';
     ctx.font = '14px Arial, "Microsoft JhengHei", sans-serif';
 
@@ -303,46 +367,71 @@ export default function GachaSection({
       }
       ctx.fillText(line, x, currentY);
     };
-    wrapText(fortuneDesc, 70, 310, 330, 24);
+    wrapText(fortuneDesc, 70, 310, 280, 24);
 
     // 6. Right side widgets
     // Widget 1: Lucky numbers
-    drawRoundedRect(455, 180, 310, 115, 16, 'rgba(15, 23, 42, 0.65)', 'rgba(99, 102, 241, 0.25)');
+    drawRoundedRect(410, 180, 355, 110, 16, 'rgba(15, 23, 42, 0.65)', 'rgba(99, 102, 241, 0.25)');
     ctx.fillStyle = '#a5b4fc';
     ctx.font = 'bold 11px Arial, "Microsoft JhengHei", sans-serif';
-    ctx.fillText("LUCKY NUMBERS • 幸運數字", 475, 210);
+    ctx.fillText("LUCKY NUMBERS • 幸運數字", 430, 210);
 
     ctx.fillStyle = '#818cf8';
-    ctx.font = 'bold 25px Courier, monospace';
-    ctx.fillText(`🎲  [ ${luckyNumbers} ]`, 475, 248);
+    ctx.font = 'bold 23px Courier, monospace';
+    ctx.fillText(`🎲  [ ${luckyNumbers} ]`, 430, 245);
 
     ctx.fillStyle = '#64748b';
-    ctx.font = '11px "Microsoft JhengHei", sans-serif';
-    ctx.fillText("與此尾數相配、或名字有相關的角色組隊最神！", 475, 274);
+    ctx.font = '10.5px "Microsoft JhengHei", sans-serif';
+    ctx.fillText("與此尾數相配、或名字有相關的角色組隊最神！", 430, 272);
 
     // Widget 2: Upgrade destination
-    drawRoundedRect(455, 315, 310, 120, 16, 'rgba(15, 23, 42, 0.65)', 'rgba(245, 158, 11, 0.25)');
+    drawRoundedRect(410, 300, 355, 110, 16, 'rgba(15, 23, 42, 0.65)', 'rgba(245, 158, 11, 0.25)');
     ctx.fillStyle = '#fde047';
     ctx.font = 'bold 11px Arial, "Microsoft JhengHei", sans-serif';
-    ctx.fillText("BEST UPGRADE SPOT • 衝卷聖地", 475, 345);
+    ctx.fillText("BEST UPGRADE SPOT • 衝卷聖地", 430, 330);
 
     ctx.fillStyle = '#fbbf24';
-    ctx.font = 'bold 14px Arial, "Microsoft JhengHei", sans-serif';
-    wrapText(`🔨 ${spot}`, 475, 375, 270, 20);
+    ctx.font = 'bold 13.5px Arial, "Microsoft JhengHei", sans-serif';
+    wrapText(`🔨 ${spot}`, 430, 358, 315, 20);
+
+    // Widget 3: Daily Almanac
+    drawRoundedRect(410, 420, 355, 165, 16, 'rgba(15, 23, 42, 0.65)', 'rgba(147, 51, 234, 0.25)');
+    ctx.fillStyle = '#d8b4fe';
+    ctx.font = 'bold 11px Arial, "Microsoft JhengHei", sans-serif';
+    ctx.fillText("MAPLE DAILY ALMANAC • 冒險黃曆", 430, 445);
+
+    if (almanac) {
+      ctx.fillStyle = '#a7f3d0';
+      ctx.font = '12px "Microsoft JhengHei", sans-serif';
+      ctx.fillText(`🏮 宜：${almanac.shouldDo || '打怪'}`, 430, 473);
+
+      ctx.fillStyle = '#fecdd3';
+      ctx.font = '12px "Microsoft JhengHei", sans-serif';
+      ctx.fillText(`❌ 忌：${almanac.shouldNotDo || '衝裝'}`, 430, 498);
+
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '12px "Microsoft JhengHei", sans-serif';
+      ctx.fillText(`🎨 色：${almanac.luckyColor || '無'}`, 430, 523);
+      ctx.fillText(`💍 物：${almanac.luckyItem || '無'}`, 430, 548);
+    } else {
+      ctx.fillStyle = '#64748b';
+      ctx.font = 'italic 12px "Microsoft JhengHei", sans-serif';
+      ctx.fillText("欲知今日所宜相忌，請抽取神籤...", 430, 480);
+    }
 
     // 7. Footer details
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
     ctx.beginPath();
-    ctx.moveTo(35, 455);
-    ctx.lineTo(width - 35, 455);
+    ctx.moveTo(35, 595);
+    ctx.lineTo(width - 35, 595);
     ctx.stroke();
 
     ctx.fillStyle = '#475569';
     ctx.font = '11px Arial, "Microsoft JhengHei", sans-serif';
-    ctx.fillText("NyxShade 命運神宮 • 壞掉不要找我喔 ✧｡٩(ˊᗜˋ)و✧｡", 35, 478);
+    ctx.fillText("NyxShade 命運神宮 • 壞掉不要找我喔 ✧｡٩(ˊᗜˋ)و✧｡", 35, 615);
 
     const datestr = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-    ctx.fillText(datestr, width - 35 - ctx.measureText(datestr).width, 478);
+    ctx.fillText(datestr, width - 35 - ctx.measureText(datestr).width, 615);
 
     return new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((blob) => {
@@ -388,7 +477,8 @@ export default function GachaSection({
         gachaResult.spot,
         authorName,
         job,
-        level
+        level,
+        gachaResult.almanac
       );
 
       const formData = new FormData();
@@ -400,6 +490,13 @@ export default function GachaSection({
           title: `🍁 NyxShade 遠征幸運轉蛋報告 🔮`,
           description: `冒險者 **${authorName}** (${job} Lv.${level}) 的今日好運籤已經出爐！`,
           color: gachaResult.fortune.dcColor,
+          fields: [
+            { name: "🏮 今日宜事 (Do)", value: gachaResult.almanac?.shouldDo || "無特別宜事", inline: true },
+            { name: "❌ 今日相忌 (Don't)", value: gachaResult.almanac?.shouldNotDo || "無特別相忌", inline: true },
+            { name: "🎨 幸運色彩", value: gachaResult.almanac?.luckyColor || "無特別色彩", inline: true },
+            { name: "💍 命定神物", value: gachaResult.almanac?.luckyItem || "無特別神物", inline: true },
+            { name: "🤝 命伴職業", value: gachaResult.almanac?.luckyPartner || "無特別夥伴", inline: true }
+          ],
           image: {
             url: 'attachment://gacha_fortune.png'
           },
@@ -599,6 +696,47 @@ export default function GachaSection({
               {gachaResult.spot}
             </p>
           </div>
+
+          {/* Daily Almanac card */}
+          {gachaResult.almanac && (
+            <div className="col-span-full mt-4 p-5 rounded-2xl border border-indigo-950/60 bg-gradient-to-r from-slate-900 via-indigo-950/15 to-slate-900 shadow-xl">
+              <span className="text-[10.5px] font-black text-indigo-400 block uppercase tracking-widest font-mono mb-3.5 select-none">
+                🏮 MAPLE DAILY ALMANAC • 命運遠征冒險黃曆
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mt-1.5">
+                <div className="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+                  <div className="text-[10.5px] text-emerald-400 font-extrabold flex items-center gap-1.5 mb-1.5 select-none">
+                    <span>🏮</span> 宜 (Should Do)
+                  </div>
+                  <div className="text-xs font-black text-slate-200">{gachaResult.almanac.shouldDo}</div>
+                </div>
+                <div className="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+                  <div className="text-[10.5px] text-rose-400 font-extrabold flex items-center gap-1.5 mb-1.5 select-none">
+                    <span>❌</span> 忌 (Don't Do)
+                  </div>
+                  <div className="text-xs font-black text-slate-200">{gachaResult.almanac.shouldNotDo}</div>
+                </div>
+                <div className="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+                  <div className="text-[10.5px] text-amber-400 font-extrabold flex items-center gap-1.5 mb-1.5 select-none">
+                    <span>🎨</span> 幸運色彩 (Color)
+                  </div>
+                  <div className="text-xs font-black text-slate-200">{gachaResult.almanac.luckyColor}</div>
+                </div>
+                <div className="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+                  <div className="text-[10.5px] text-indigo-400 font-extrabold flex items-center gap-1.5 mb-1.5 select-none">
+                    <span>💍</span> 命定神物 (Item)
+                  </div>
+                  <div className="text-xs font-black text-slate-200">{gachaResult.almanac.luckyItem}</div>
+                </div>
+                <div className="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+                  <div className="text-[10.5px] text-purple-400 font-extrabold flex items-center gap-1.5 mb-1.5 select-none">
+                    <span>🤝</span> 命伴職業 (Companion)
+                  </div>
+                  <div className="text-xs font-black text-slate-200">{gachaResult.almanac.luckyPartner}</div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="border border-dashed border-slate-800 rounded-2xl p-8 text-center text-slate-500 text-xs italic bg-slate-900/10 select-none">

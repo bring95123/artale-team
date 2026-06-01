@@ -1161,8 +1161,8 @@ export default function App() {
 
   const myScheduleRaids = raids.filter(raid => {
     if (!activeCharacter.ign) return false;
-    const hasVotedActive = raid.votes?.some((v: any) => v.userId === customUid && Object.values(v.votes || {}).some(choice => choice === 'yes' || choice === 'maybe'));
-    const isEnrolledActive = raid.participants?.some((p: any) => p.userId === customUid);
+    const hasVotedActive = raid.votes?.some((v: any) => v.userId === customUid && v.ign === activeCharacter.ign && Object.values(v.votes || {}).some(choice => choice === 'yes' || choice === 'maybe'));
+    const isEnrolledActive = raid.participants?.some((p: any) => p.userId === customUid && p.ign === activeCharacter.ign);
     return hasVotedActive || isEnrolledActive;
   });
 
@@ -1369,7 +1369,7 @@ export default function App() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {myScheduleRaids.map((raid) => {
                         const raidBoss = bosses.find(b => b.id === raid.bossId);
-                        const participantInfo = raid.participants?.find((p: any) => p.userId === customUid);
+                        const participantInfo = raid.participants?.find((p: any) => p.userId === customUid && p.ign === activeCharacter.ign);
                         let enrollmentStatus = "已投票（待排班錄取）";
                         if (participantInfo) {
                           if (participantInfo.party === 'reserve') enrollmentStatus = "⏳ 錄取為：候補成員";
