@@ -1652,7 +1652,7 @@ export default function App() {
                       return (
                         <div className="flex flex-wrap gap-2.5 mt-2">
                           {votersList.map((voter, vIdx) => {
-                            const alreadyInRaid = activeRaid.participants?.some((p: any) => p.userId === voter.userId);
+                            const alreadyInRaid = activeRaid.participants?.some((p: any) => p.userId === voter.userId && p.ign === voter.ign);
                             return (
                               <div 
                                 key={voter.userId + '-' + voter.ign + '-' + voter.job + '-' + vIdx}
@@ -1788,7 +1788,7 @@ export default function App() {
                         return (
                           <div className="flex flex-wrap gap-2.5 mt-2 animate-in fade-in duration-300">
                             {votersList.map((voter, vIdx) => {
-                              const alreadyInRaid = activeRaid.participants?.some((p: any) => p.userId === voter.userId);
+                              const alreadyInRaid = activeRaid.participants?.some((p: any) => p.userId === voter.userId && p.ign === voter.ign);
                               return (
                                 <div 
                                   key={voter.userId + '-' + voter.ign + '-' + voter.job + '-' + vIdx}
