@@ -77,8 +77,6 @@ export default function SynergyAnalyzer({
     const hasRage = pList.some(p => isRageHero(p.job));
     const hasCO = pList.some(p => isPaladinOrders(p.job));
     const hasSmoke = pList.some(p => isShadowerSmoke(p.job));
-
-    // Calculate level 120+ members
     const hasMapleWarrior = pList.some(p => p.level >= 120);
 
     const buffs = [];
@@ -87,7 +85,7 @@ export default function SynergyAnalyzer({
         id: 'hs',
         name: '神聖祈禱 (Holy Symbol)',
         effect: '組隊經驗值額外 +50% ~ +110%，提供滿滿聖光淨化庇佑。',
-        color: 'border-blue-500/40 bg-blue-950/20 text-blue-300',
+        color: 'border-blue-200 bg-blue-50/70 text-blue-900',
         icon: '⛪'
       });
     }
@@ -96,7 +94,7 @@ export default function SynergyAnalyzer({
         id: 'hb',
         name: '神聖之火 (Hyper Body)',
         effect: '組隊最大血量(MaxHP)與魔力(MaxMP)增加 60%！高抗秒殺核心。',
-        color: 'border-red-500/40 bg-red-950/20 text-red-300',
+        color: 'border-rose-200 bg-rose-50/70 text-rose-900',
         icon: '🔥'
       });
     }
@@ -105,7 +103,7 @@ export default function SynergyAnalyzer({
         id: 'se',
         name: '會心之眼 (Sharp Eyes)',
         effect: '物理爆擊機率 +15%、爆擊最大傷害 +40%！打寶爆發神術。',
-        color: 'border-emerald-500/40 bg-emerald-950/20 text-emerald-300',
+        color: 'border-emerald-200 bg-emerald-50/70 text-emerald-900',
         icon: '👁️'
       });
     }
@@ -114,7 +112,7 @@ export default function SynergyAnalyzer({
         id: 'si',
         name: '極速領域 (Speed Infusion)',
         effect: '突破常規武器極速，攻擊速度強行提升 2 階，DPS 全面狂飆。',
-        color: 'border-amber-500/40 bg-amber-950/20 text-amber-300',
+        color: 'border-amber-200 bg-amber-50/70 text-amber-900',
         icon: '⚡'
       });
     }
@@ -123,7 +121,7 @@ export default function SynergyAnalyzer({
         id: 'co',
         name: '戰鬥秩序 (Combat Orders)',
         effect: '突破技能極限上限，全體 4 轉技能等級上限 +2 級，能力全開！',
-        color: 'border-violet-500/40 bg-violet-950/20 text-violet-300',
+        color: 'border-violet-200 bg-violet-50/70 text-violet-900',
         icon: '🛡️'
       });
     }
@@ -132,7 +130,7 @@ export default function SynergyAnalyzer({
         id: 'smoke',
         name: '煙霧彈障壁 (Smokescreen)',
         effect: '施放高科技煙幕，範圍內所有成員進入 30 秒完全無敵免疫傷害。',
-        color: 'border-purple-500/40 bg-purple-950/20 text-purple-300',
+        color: 'border-purple-200 bg-purple-50/70 text-purple-900',
         icon: '💨'
       });
     }
@@ -141,7 +139,7 @@ export default function SynergyAnalyzer({
         id: 'rage',
         name: '憤怒之火 (Rage)',
         effect: '基礎物理攻擊力增加 20 點。物理職業輸出必備甜品。',
-        color: 'border-slate-500/30 bg-slate-900/60 text-slate-300',
+        color: 'border-slate-200 bg-slate-100 text-slate-800',
         icon: '⚔️'
       });
     }
@@ -150,7 +148,7 @@ export default function SynergyAnalyzer({
         id: 'mw',
         name: '楓葉祝福 (Maple Warrior)',
         effect: '全體主屬性百分比額外 +15%！神級全能被動加持。',
-        color: 'border-pink-500/30 bg-pink-950/10 text-pink-300',
+        color: 'border-pink-200 bg-pink-50/70 text-pink-900',
         icon: '🍁'
       });
     }
@@ -169,17 +167,14 @@ export default function SynergyAnalyzer({
     const hasSE = pList.some(p => isSharpBowman(p.job));
     const hasSI = pList.some(p => isSpeedBuccaneer(p.job));
 
-    // Core buffs are worth 15 points each
     if (hasHS) score += 18;
     if (hasHB) score += 18;
     if (hasSE) score += 18;
     if (hasSI) score += 10;
 
-    // Balance multiplier based on count (ideal party has Healer + Bowman for physical, etc)
     const distinctJobs = new Set(pList.map(p => p.job)).size;
-    score += distinctJobs * 2; // reward variety
+    score += distinctJobs * 2;
 
-    // High level bonus (average party level)
     const avgLevel = pList.reduce((sum, p) => sum + p.level, 0) / pList.length;
     score += Math.min(10, avgLevel / 15);
 
@@ -213,27 +208,23 @@ export default function SynergyAnalyzer({
 
   // Overall evaluation text
   const evaluationRating = useMemo(() => {
-    if (participants.length === 0) return { stars: '☆☆☆☆☆', text: '空空如也，隊友們還踩在路上...', color: 'text-slate-500' };
-    if (globalSynergyScore >= 88) return { stars: '★★★★★', text: '夢幻極限隊伍！核心職業相性絕合，摧枯拉朽！', color: 'text-amber-400' };
-    if (globalSynergyScore >= 75) return { stars: '★★★★☆', text: '頂規遠征陣容！主副 Buff 配備完整，推王猶如探囊取物。', color: 'text-emerald-400' };
-    if (globalSynergyScore >= 60) return { stars: '★★★☆☆', text: '標準作戰小隊！生存或火力配備基本達標，注意走位！', color: 'text-indigo-400' };
-    return { stars: '★★☆☆☆', text: '職業略顯鬆散！部分隊伍缺少關鍵 Healer 或 SE 大 Buff，建議最佳化。', color: 'text-rose-400' };
+    if (participants.length === 0) return { stars: '☆☆☆☆☆', text: '空空如也，隊友們還在路上...', color: 'text-slate-400' };
+    if (globalSynergyScore >= 88) return { stars: '★★★★★', text: '夢幻極限隊伍！核心職業相性絕合，摧枯拉朽！', color: 'text-amber-600' };
+    if (globalSynergyScore >= 75) return { stars: '★★★★☆', text: '頂規遠征陣容！主副 Buff 配備完整，推王猶如探囊取物。', color: 'text-emerald-600' };
+    if (globalSynergyScore >= 60) return { stars: '★★★☆☆', text: '標準作戰小隊！生存或火力配備基本達標，注意走位！', color: 'text-indigo-600' };
+    return { stars: '★★☆☆☆', text: '職業略顯鬆散！部分隊伍缺少關鍵 Healer 或 SE 大 Buff，建議最佳化。', color: 'text-rose-600' };
   }, [globalSynergyScore, participants]);
 
   // AI-like tactical advice list based on current layout
   const tacticalAdvices = useMemo(() => {
     const list: string[] = [];
-    if (participants.length === 0) return ["💡 目前還沒有成員加入編組，在下方的 Roster 點選「錄取」即可同步分析！"];
+    if (participants.length === 0) return ["💡 目前還沒有成員加入編組，在下方的名冊點選「錄取」即可同步分析！"];
 
-    // 1. check missing Healers globally vs reserves
     const bishopsInReserves = reservesList.filter(p => isBishopPriest(p.job));
     const bishopsIn1 = party1List.filter(p => isBishopPriest(p.job));
     const bishopsIn2 = party2List.filter(p => isBishopPriest(p.job));
     const bishopsIn3 = party3List.filter(p => isBishopPriest(p.job));
 
-    const totalBishops = bishopsIn1.length + bishopsIn2.length + bishopsIn3.length + bishopsInReserves.length;
-
-    // Check if any active team has NO Bishop
     if (party1List.length > 0 && bishopsIn1.length === 0) {
       list.push(`🔵 **遠征一隊 缺少主教/祭司**！該小隊將無法享受 Holy Symbol 的 EXP 經驗增幅，且遇到異常狀態無人解控。`);
     }
@@ -248,8 +239,6 @@ export default function SynergyAnalyzer({
       list.push(`⚠️ 出席警告：**預備/候補座中含有【主教/祭司：${bishopsInReserves.map(b => b.ign).join(', ')}】**！強烈建議將她/他調至缺少回復的主力隊中！`);
     }
 
-    // 2. check Night Lords vs Sharp Eyes synergy
-    // Night lords do best when there is a Bowmaster/Marksman in their specific party.
     const hasBowmanIn1 = party1List.some(p => isSharpBowman(p.job));
     const nlsIn1 = party1List.filter(p => p.job === '夜使者');
     if (nlsIn1.length > 0 && !hasBowmanIn1) {
@@ -262,7 +251,6 @@ export default function SynergyAnalyzer({
       list.push(`🎯 物理搭配警報：**遠征二隊 的【夜使者 (${nlsIn2.map(p=>p.ign).join(', ')})】未能與 箭神/神射手 配對過招**，爆擊收益受阻。`);
     }
 
-    // 3. Boss specific HP / Tank warnings
     const totalDks = party1List.filter(p => isDarkSpearman(p.job)).length + 
                      (partyCount >= 2 ? party2List.filter(p => isDarkSpearman(p.job)).length : 0) + 
                      (partyCount >= 3 ? party3List.filter(p => isDarkSpearman(p.job)).length : 0);
@@ -277,53 +265,53 @@ export default function SynergyAnalyzer({
       list.push("🏅 陣容無懈可擊！成員各歸其位，Buff 完全覆蓋，請指揮官直接帶隊碾壓 Boss 吧！");
     }
 
-    return list.slice(0, 4); // return top 4 smart actionable alerts
+    return list.slice(0, 4);
   }, [participants, party1List, party2List, party3List, reservesList, partyCount, boss]);
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl space-y-6 select-none" id="expedition-synergy-room">
+    <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-6 shadow-md space-y-5 select-none" id="expedition-synergy-room">
       
       {/* Header and overview metric details */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between border-b border-slate-800 pb-5 gap-4">
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between border-b border-slate-100 pb-4 gap-3.5">
         <div>
-          <span className="px-2.5 py-1 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-[10px] uppercase rounded-lg font-black tracking-wider">
+          <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] uppercase rounded-lg font-black tracking-wider">
             戰略指揮部 • 智慧核心
           </span>
-          <h3 className="text-lg md:text-xl font-extrabold text-white mt-1.5 flex items-center gap-2">
+          <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 mt-1.5 flex items-center gap-2">
             <span>⚡ 遠征團戰力與 Buff 組合相性分析</span>
           </h3>
-          <p className="text-xs text-slate-400 mt-1">智慧解構職業相性關聯，發揮 Holy Symbol / Sharp Eyes 最大覆蓋，協助團長秒排完美天團！</p>
+          <p className="text-xs text-slate-500 mt-1">智慧解構職業相性關聯，發揮 Holy Symbol / Sharp Eyes 最大覆蓋！</p>
         </div>
 
         {/* Dynamic score ring */}
-        <div className="flex items-center gap-3.5 bg-slate-950 p-3 rounded-2xl border border-slate-800/80 shrink-0">
-          <div className="relative w-12 h-12 flex items-center justify-center">
+        <div className="flex items-center gap-3 bg-slate-50 p-2.5 sm:p-3 rounded-2xl border border-slate-200 shrink-0">
+          <div className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center">
             <svg className="w-full h-full transform -rotate-90">
-              <circle cx="24" cy="24" r="20" stroke="#1e293b" strokeWidth="4" fill="transparent" />
-              <circle cx="24" cy="24" r="20" stroke={globalSynergyScore >= 80 ? '#fbbf24' : globalSynergyScore >= 60 ? '#818cf8' : '#f87171'} strokeWidth="4" fill="transparent" 
+              <circle cx="24" cy="24" r="20" stroke="#e2e8f0" strokeWidth="4" fill="transparent" />
+              <circle cx="24" cy="24" r="20" stroke={globalSynergyScore >= 80 ? '#f59e0b' : globalSynergyScore >= 60 ? '#6366f1' : '#f43f5e'} strokeWidth="4" fill="transparent" 
                 strokeDasharray={2 * Math.PI * 20}
                 strokeDashoffset={2 * Math.PI * 20 * (1 - globalSynergyScore / 100)}
                 strokeLinecap="round"
               />
             </svg>
-            <span className="absolute font-mono font-black text-slate-100 text-xs">{globalSynergyScore}%</span>
+            <span className="absolute font-mono font-black text-slate-900 text-xs">{globalSynergyScore}%</span>
           </div>
           <div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               <span className="text-xs text-slate-500 font-bold">總體相性指數</span>
               <span className={`text-xs font-black ${evaluationRating.color}`}>{evaluationRating.stars}</span>
             </div>
-            <p className={`text-[11px] font-extrabold max-w-[210px] break-words line-clamp-1 truncate leading-tight mt-0.5 ${globalSynergyScore >= 75 ? 'text-amber-400' : 'text-slate-300'}`}>{evaluationRating.text}</p>
+            <p className={`text-[11px] font-extrabold max-w-[210px] truncate leading-tight mt-0.5 ${globalSynergyScore >= 75 ? 'text-amber-700' : 'text-slate-700'}`}>{evaluationRating.text}</p>
           </div>
         </div>
       </div>
 
       {/* AI coach dynamic warnings panel wrapper */}
-      <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4.5 space-y-2.5">
-        <h4 className="text-xs font-black text-amber-500 flex items-center gap-1.5">
+      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 sm:p-4 space-y-2">
+        <h4 className="text-xs font-black text-amber-700 flex items-center gap-1.5">
           <span>🧠 遠征戰術指揮官の大局警報與提示：</span>
         </h4>
-        <div className="space-y-2.5">
+        <div className="space-y-2">
           {tacticalAdvices.map((advice, index) => {
             const isDanger = advice.includes('警告') || advice.includes('高危');
             const isPerfect = advice.includes('完美') || advice.includes('無懈可擊');
@@ -331,12 +319,12 @@ export default function SynergyAnalyzer({
             return (
               <div 
                 key={index} 
-                className={`text-xs p-3 rounded-xl border flex items-start gap-2.5 text-slate-300 leading-relaxed font-semibold transition ${
+                className={`text-xs p-2.5 sm:p-3 rounded-xl border flex items-start gap-2 text-slate-800 leading-relaxed font-semibold transition ${
                   isDanger 
-                    ? 'border-rose-950 bg-rose-500/5 text-rose-300 shadow shadow-rose-950/5 animate-pulse' 
+                    ? 'border-rose-300 bg-rose-50 text-rose-900 shadow-sm' 
                     : isPerfect 
-                    ? 'border-amber-500/20 bg-amber-500/5 text-slate-200' 
-                    : 'border-slate-850 bg-slate-900/40 text-slate-350'
+                    ? 'border-amber-300 bg-amber-50 text-amber-900' 
+                    : 'border-slate-200 bg-white text-slate-700'
                 }`}
               >
                 <span className="shrink-0 text-sm mt-0.5">
@@ -351,85 +339,85 @@ export default function SynergyAnalyzer({
 
       {/* Interactive Tabs and Buff Layout detail panels */}
       <div>
-        <div className="flex flex-wrap border-b border-slate-800 gap-1.5 pb-2">
+        <div className="flex flex-wrap border-b border-slate-200 gap-1.5 pb-2">
           <button
             type="button"
             onClick={() => setActiveTab('all')}
-            className={`px-4.5 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'all' ? 'bg-slate-805 bg-slate-800 border border-slate-700 text-slate-100 shadow' : 'text-slate-400 hover:text-slate-200'}`}
+            className={`px-3 sm:px-4 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${activeTab === 'all' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
           >
             📋 總體戰力綜覽
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('1')}
-            className={`px-4.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${activeTab === '1' ? 'bg-blue-600/30 border border-blue-500 text-blue-200 shadow' : 'text-slate-400 hover:text-slate-200'}`}
+            className={`px-3 sm:px-4 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${activeTab === '1' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
           >
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-            <span>🔵 遠征一隊 ({party1List.length}/6)</span>
-            <span className="bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded text-[9px] font-mono">{p1Score}分</span>
+            <span className="w-2 h-2 rounded-full bg-blue-400" />
+            <span>一隊 ({party1List.length}/6)</span>
+            <span className="bg-white/20 text-white px-1.5 py-0.5 rounded text-[9px] font-mono">{p1Score}分</span>
           </button>
           {partyCount >= 2 && (
             <button
               type="button"
               onClick={() => setActiveTab('2')}
-              className={`px-4.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${activeTab === '2' ? 'bg-emerald-600/30 border border-emerald-500 text-emerald-200 shadow' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`px-3 sm:px-4 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${activeTab === '2' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
             >
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-              <span>🟢 遠征二隊 ({party2List.length}/6)</span>
-              <span className="bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded text-[9px] font-mono">{p2Score}分</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span>二隊 ({party2List.length}/6)</span>
+              <span className="bg-white/20 text-white px-1.5 py-0.5 rounded text-[9px] font-mono">{p2Score}分</span>
             </button>
           )}
           {partyCount >= 3 && (
             <button
               type="button"
               onClick={() => setActiveTab('3')}
-              className={`px-4.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${activeTab === '3' ? 'bg-violet-600/30 border border-violet-500 text-violet-200 shadow' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`px-3 sm:px-4 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${activeTab === '3' ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
             >
-              <span className="w-2.5 h-2.5 rounded-full bg-violet-500" />
-              <span>🟣 遠征三隊 ({party3List.length}/6)</span>
-              <span className="bg-violet-500/20 text-violet-300 px-1.5 py-0.5 rounded text-[9px] font-mono">{p3Score}分</span>
+              <span className="w-2 h-2 rounded-full bg-violet-400" />
+              <span>三隊 ({party3List.length}/6)</span>
+              <span className="bg-white/20 text-white px-1.5 py-0.5 rounded text-[9px] font-mono">{p3Score}分</span>
             </button>
           )}
         </div>
 
         {/* TAB PANELS RENDERS */}
-        <div className="mt-4">
+        <div className="mt-3.5">
           {activeTab === 'all' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4.5 font-mono">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 font-mono">
                 
                 {/* Party 1 Overview */}
-                <div className="bg-slate-950 p-4 rounded-2xl border border-slate-805 border-slate-800">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3">
-                    <span className="text-xs font-black text-blue-400 flex items-center gap-1.5">
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-2.5">
+                    <span className="text-xs font-black text-blue-700 flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-blue-500" />
                       一隊
                     </span>
-                    <span className="text-[11px] bg-slate-900 border border-slate-800/80 text-slate-400 font-bold px-2 py-0.5 rounded-lg">{p1Score} / 100分</span>
+                    <span className="text-[11px] bg-white border border-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded-lg">{p1Score} / 100分</span>
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1">
                     {party1List.length === 0 ? (
-                      <span className="text-[11px] text-slate-600 italic block py-2 text-center font-sans">無分配成員</span>
+                      <span className="text-[11px] text-slate-400 italic block py-2 text-center font-sans">無分配成員</span>
                     ) : (
                       party1List.map(p => (
-                        <div key={p.userId + '-' + p.ign} className="flex items-center justify-between text-[11px] bg-slate-900/40 px-2 py-1.5 rounded-xl border border-slate-900">
-                          <span className="truncate text-slate-250 font-bold text-slate-100 flex items-center gap-1 bg-slate-950/20">
+                        <div key={p.userId + '-' + p.ign} className="flex items-center justify-between text-[11px] bg-white px-2 py-1 rounded-xl border border-slate-200">
+                          <span className="truncate font-bold text-slate-900 flex items-center gap-1">
                             <JobIcon jobName={p.job} sizeClass="w-3.5 h-3.5" />
                             <strong className="truncate max-w-[80px]">{p.ign}</strong>
                           </span>
-                          <span className="text-[10px] text-slate-450 text-slate-400 text-right">{p.job} • Lv.{p.level}</span>
+                          <span className="text-[10px] text-slate-500 text-right">{p.job} • Lv.{p.level}</span>
                         </div>
                       ))
                     )}
                   </div>
-                  <div className="mt-3.5 pt-3 border-t border-slate-800/60">
-                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1.5 font-sans">已啟動組隊 Buff：</span>
+                  <div className="mt-3 pt-2.5 border-t border-slate-200">
+                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1 font-sans">已啟動組隊 Buff：</span>
                     <div className="flex flex-wrap gap-1">
                       {p1Buffs.length === 0 ? (
-                        <span className="text-[10px] text-slate-650 italic">無加護</span>
+                        <span className="text-[10px] text-slate-400 italic">無加護</span>
                       ) : (
                         p1Buffs.map(b => (
-                          <span key={b.id} className="text-[10px] bg-slate-900 text-slate-300 border border-slate-800/80 px-2 py-0.5 rounded-lg cursor-help" title={b.effect}>
+                          <span key={b.id} className="text-[10px] bg-white text-slate-700 border border-slate-200 px-1.5 py-0.5 rounded-md cursor-help shadow-sm" title={b.effect}>
                             {b.icon} {b.name.split(' (')[0]}
                           </span>
                         ))
@@ -440,37 +428,37 @@ export default function SynergyAnalyzer({
 
                 {/* Party 2 Overview */}
                 {partyCount >= 2 && (
-                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-805 border-slate-800">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3">
-                      <span className="text-xs font-black text-emerald-400 flex items-center gap-1.5">
+                  <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-2.5">
+                      <span className="text-xs font-black text-emerald-700 flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-500" />
                         二隊
                       </span>
-                      <span className="text-[11px] bg-slate-900 border border-slate-800/80 text-slate-400 font-bold px-2 py-0.5 rounded-lg">{p2Score} / 100分</span>
+                      <span className="text-[11px] bg-white border border-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded-lg">{p2Score} / 100分</span>
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                       {party2List.length === 0 ? (
-                        <span className="text-[11px] text-slate-600 italic block py-2 text-center font-sans">無分配成員</span>
+                        <span className="text-[11px] text-slate-400 italic block py-2 text-center font-sans">無分配成員</span>
                       ) : (
                         party2List.map(p => (
-                          <div key={p.userId + '-' + p.ign} className="flex items-center justify-between text-[11px] bg-slate-900/40 px-2 py-1.5 rounded-xl border border-slate-900">
-                            <span className="truncate text-slate-250 font-bold text-slate-100 flex items-center gap-1">
+                          <div key={p.userId + '-' + p.ign} className="flex items-center justify-between text-[11px] bg-white px-2 py-1 rounded-xl border border-slate-200">
+                            <span className="truncate font-bold text-slate-900 flex items-center gap-1">
                               <JobIcon jobName={p.job} sizeClass="w-3.5 h-3.5" />
                               <strong className="truncate max-w-[80px]">{p.ign}</strong>
                             </span>
-                            <span className="text-[10px] text-slate-450 text-slate-400 text-right">{p.job} • Lv.{p.level}</span>
+                            <span className="text-[10px] text-slate-500 text-right">{p.job} • Lv.{p.level}</span>
                           </div>
                         ))
                       )}
                     </div>
-                    <div className="mt-3.5 pt-3 border-t border-slate-800/60">
-                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1.5 font-sans">已啟動組隊 Buff：</span>
+                    <div className="mt-3 pt-2.5 border-t border-slate-200">
+                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1 font-sans">已啟動組隊 Buff：</span>
                       <div className="flex flex-wrap gap-1">
                         {p2Buffs.length === 0 ? (
-                          <span className="text-[10px] text-slate-650 italic">無加護</span>
+                          <span className="text-[10px] text-slate-400 italic">無加護</span>
                         ) : (
                           p2Buffs.map(b => (
-                            <span key={b.id} className="text-[10px] bg-slate-900 text-slate-300 border border-slate-800/80 px-2 py-0.5 rounded-lg cursor-help" title={b.effect}>
+                            <span key={b.id} className="text-[10px] bg-white text-slate-700 border border-slate-200 px-1.5 py-0.5 rounded-md cursor-help shadow-sm" title={b.effect}>
                               {b.icon} {b.name.split(' (')[0]}
                             </span>
                           ))
@@ -482,37 +470,37 @@ export default function SynergyAnalyzer({
 
                 {/* Party 3 Overview */}
                 {partyCount >= 3 && (
-                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-805 border-slate-800">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3">
-                      <span className="text-xs font-black text-violet-400 flex items-center gap-1.5">
+                  <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-2.5">
+                      <span className="text-xs font-black text-violet-700 flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-violet-500" />
                         三隊
                       </span>
-                      <span className="text-[11px] bg-slate-900 border border-slate-800/80 text-slate-400 font-bold px-2 py-0.5 rounded-lg">{p3Score} / 100分</span>
+                      <span className="text-[11px] bg-white border border-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded-lg">{p3Score} / 100分</span>
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                       {party3List.length === 0 ? (
-                        <span className="text-[11px] text-slate-600 italic block py-2 text-center font-sans">無分配成員</span>
+                        <span className="text-[11px] text-slate-400 italic block py-2 text-center font-sans">無分配成員</span>
                       ) : (
                         party3List.map(p => (
-                          <div key={p.userId + '-' + p.ign} className="flex items-center justify-between text-[11px] bg-slate-900/40 px-2 py-1.5 rounded-xl border border-slate-900">
-                            <span className="truncate text-slate-250 font-bold text-slate-100 flex items-center gap-1">
+                          <div key={p.userId + '-' + p.ign} className="flex items-center justify-between text-[11px] bg-white px-2 py-1 rounded-xl border border-slate-200">
+                            <span className="truncate font-bold text-slate-900 flex items-center gap-1">
                               <JobIcon jobName={p.job} sizeClass="w-3.5 h-3.5" />
                               <strong className="truncate max-w-[80px]">{p.ign}</strong>
                             </span>
-                            <span className="text-[10px] text-slate-455 text-slate-400 text-right">{p.job} • Lv.{p.level}</span>
+                            <span className="text-[10px] text-slate-500 text-right">{p.job} • Lv.{p.level}</span>
                           </div>
                         ))
                       )}
                     </div>
-                    <div className="mt-3.5 pt-3 border-t border-slate-800/60">
-                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1.5 font-sans">已啟動組隊 Buff：</span>
+                    <div className="mt-3 pt-2.5 border-t border-slate-200">
+                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1 font-sans">已啟動組隊 Buff：</span>
                       <div className="flex flex-wrap gap-1">
                         {p3Buffs.length === 0 ? (
-                          <span className="text-[10px] text-slate-655 italic">無加護</span>
+                          <span className="text-[10px] text-slate-400 italic">無加護</span>
                         ) : (
                           p3Buffs.map(b => (
-                            <span key={b.id} className="text-[10px] bg-slate-900 text-slate-300 border border-slate-800/80 px-2 py-0.5 rounded-lg cursor-help" title={b.effect}>
+                            <span key={b.id} className="text-[10px] bg-white text-slate-700 border border-slate-200 px-1.5 py-0.5 rounded-md cursor-help shadow-sm" title={b.effect}>
                               {b.icon} {b.name.split(' (')[0]}
                             </span>
                           ))
@@ -525,39 +513,38 @@ export default function SynergyAnalyzer({
             </div>
           )}
 
-          {/* Individual detailed tabs showing big interactive cards for each buff */}
+          {/* Individual detailed tabs */}
           {(activeTab === '1' || activeTab === '2' || activeTab === '3') && (() => {
             const currentPartyList = activeTab === '1' ? party1List : activeTab === '2' ? party2List : party3List;
             const currentBuffs = activeTab === '1' ? p1Buffs : activeTab === '2' ? p2Buffs : p3Buffs;
-            const tabColor = activeTab === '1' ? 'text-blue-400 border-blue-500/30' : activeTab === '2' ? 'text-emerald-400 border-emerald-500/30' : 'text-violet-400 border-violet-500/30';
+            const tabColor = activeTab === '1' ? 'text-blue-700 border-blue-200 bg-blue-50/30' : activeTab === '2' ? 'text-emerald-700 border-emerald-200 bg-emerald-50/30' : 'text-violet-700 border-violet-200 bg-violet-50/30';
 
             return (
-              <div className="space-y-4">
-                <div className={`p-4 rounded-2xl bg-slate-950 border flex flex-col gap-4 ${tabColor}`}>
-                  <div className="flex items-center justify-between mb-1 select-none font-mono">
-                    <h5 className="text-sm font-black text-slate-100 flex items-center gap-1.5">
+              <div className="space-y-3.5">
+                <div className={`p-3.5 sm:p-4 rounded-2xl border flex flex-col gap-3 ${tabColor}`}>
+                  <div className="flex items-center justify-between select-none font-mono">
+                    <h5 className="text-sm font-black text-slate-900 flex items-center gap-1.5">
                       🧙 遠征分隊 #{activeTab} • 冒險者陣線
                     </h5>
-                    <span className="text-xs text-slate-400 font-bold">小隊平均等級: {currentPartyList.length > 0 ? Math.round(currentPartyList.reduce((s, p) => s + p.level, 0) / currentPartyList.length) : 0} 階</span>
+                    <span className="text-xs text-slate-500 font-bold">平均等級: {currentPartyList.length > 0 ? Math.round(currentPartyList.reduce((s, p) => s + p.level, 0) / currentPartyList.length) : 0} 階</span>
                   </div>
 
-                  {/* List of members with clean avatars */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 select-none">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 select-none">
                     {currentPartyList.length === 0 ? (
-                      <div className="col-span-full text-center py-4 text-xs text-slate-600 italic">空無一人。可在下方的分組面板中進行錄取調度！</div>
+                      <div className="col-span-full text-center py-4 text-xs text-slate-400 italic">空無一人。可在下方的分組面板中進行調度！</div>
                     ) : (
                       currentPartyList.map(p => (
-                        <div key={p.userId + '-' + p.ign} className="p-3 bg-slate-900 rounded-xl border border-slate-800 flex flex-col items-center text-center justify-center gap-2">
+                        <div key={p.userId + '-' + p.ign} className="p-2.5 bg-white rounded-xl border border-slate-200 flex flex-col items-center text-center justify-center gap-1.5 shadow-sm">
                           {p.discord ? (
-                            <img src={p.discord.avatar} className="w-8 h-8 rounded-full border border-[#5865F2]/40" />
+                            <img src={p.discord.avatar} className="w-7 h-7 rounded-full border border-slate-300 object-cover" />
                           ) : (
-                            <div className="w-8 h-8 rounded-full bg-slate-850 flex items-center justify-center text-slate-400 border border-slate-800 text-xs">👥</div>
+                            <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 border border-slate-200 text-xs">👥</div>
                           )}
                           <div className="min-w-0 w-full">
-                            <p className="font-extrabold text-[12px] truncate text-slate-200" title={p.ign}>{p.ign}</p>
+                            <p className="font-extrabold text-xs truncate text-slate-900" title={p.ign}>{p.ign}</p>
                             <div className="flex items-center justify-center gap-1 text-[10px] text-slate-500 font-mono mt-0.5">
-                              <JobIcon jobName={p.job} sizeClass="w-3.5 h-3.5" />
-                              <span className="max-w-[50px] truncate">{p.job}</span>
+                              <JobIcon jobName={p.job} sizeClass="w-3 h-3" />
+                              <span className="max-w-[45px] truncate">{p.job}</span>
                             </div>
                           </div>
                         </div>
@@ -566,23 +553,22 @@ export default function SynergyAnalyzer({
                   </div>
                 </div>
 
-                {/* Simulated activated status effects */}
                 <div>
-                  <h5 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2.5">
+                  <h5 className="text-xs font-black text-slate-600 uppercase tracking-wider mb-2">
                     🔮 此小隊目前享有之組隊技能 Buff (合計 {currentBuffs.length} 個)：
                   </h5>
                   {currentBuffs.length === 0 ? (
-                    <div className="p-8 border border-dashed border-slate-800 rounded-2xl text-center text-xs text-slate-600 italic bg-slate-950/20">
-                      該分組未集結任何主力 Buff/Healer。將面臨極大防爆、續航與經驗折損風險！
+                    <div className="p-6 border border-dashed border-slate-300 rounded-2xl text-center text-xs text-slate-500 italic bg-slate-50">
+                      該分組未集結任何主力 Buff/Healer。
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                       {currentBuffs.map(b => (
-                        <div key={b.id} className={`p-4 border rounded-2xl flex gap-3.5 shadow-sm transition-all duration-300 hover:border-slate-600 ${b.color}`}>
-                          <span className="text-3xl shrink-0 select-none bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/40 h-max flex items-center justify-center">{b.icon}</span>
+                        <div key={b.id} className={`p-3.5 border rounded-2xl flex gap-3 shadow-sm ${b.color}`}>
+                          <span className="text-2xl shrink-0 select-none bg-white p-2 rounded-xl border border-slate-200 h-max flex items-center justify-center shadow-sm">{b.icon}</span>
                           <div>
-                            <h6 className="font-extrabold text-sm text-slate-100">{b.name}</h6>
-                            <p className="text-[11px] text-slate-300 md:text-xs mt-1 font-semibold leading-relaxed">{b.effect}</p>
+                            <h6 className="font-extrabold text-xs sm:text-sm">{b.name}</h6>
+                            <p className="text-[11px] mt-0.5 font-medium leading-relaxed opacity-90">{b.effect}</p>
                           </div>
                         </div>
                       ))}

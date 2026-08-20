@@ -27,3 +27,23 @@ export function isIOSDevice(): boolean {
   const userAgent = window.navigator.userAgent.toLowerCase();
   return /iphone|ipad|ipod/.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
+
+export function isInAppBrowser(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = window.navigator.userAgent.toLowerCase();
+  return (
+    ua.includes('line') ||
+    ua.includes('fbav') ||
+    ua.includes('instagram') ||
+    ua.includes('discord') ||
+    ua.includes('micromessenger') ||
+    ua.includes('fban') ||
+    ua.includes('threads')
+  );
+}
+
+export function isAndroidDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  return /android/i.test(navigator.userAgent);
+}
+

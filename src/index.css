@@ -6,10 +6,10 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
-/* Custom styles for high-fidelity gaming UX */
+/* Custom styles for high-fidelity light gaming UX */
 body {
-  background-color: #020617; /* bg-slate-950 */
-  color: #f1f5f9; /* text-slate-100 */
+  background-color: #f8fafc; /* bg-slate-50 */
+  color: #0f172a; /* text-slate-900 */
 }
 
 /* Scrollbar styling */
@@ -18,18 +18,21 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0f172a; /* bg-slate-900 */
+  background: #f1f5f9; /* bg-slate-100 */
 }
 ::-webkit-scrollbar-thumb {
-  background: #334155; /* bg-slate-700 */
+  background: #cbd5e1; /* bg-slate-300 */
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569; /* bg-slate-600 */
+  background: #94a3b8; /* bg-slate-400 */
 }
 
 /* Override browser styles for datetime-local color scheme */
 input[type="datetime-local"]::-webkit-calendar-picker-indicator {
-  filter: invert(1);
   cursor: pointer;
+  opacity: 0.7;
+}
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
 }

@@ -69,9 +69,9 @@ interface GachaSectionProps {
   discordConfig: DiscordConfig | null;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
   openProfileModal: () => void;
-  onSaveFortune?: (result: GachaResult, wishingNote: string) => Promise<void>;
-  fortunesList: any[];
-  customUid: string | null;
+  onSaveFortune?: (result: GachaResult, note?: string) => Promise<void>;
+  fortunesList?: any[];
+  customUid?: string | null;
 }
 
 export default function GachaSection({
@@ -82,71 +82,58 @@ export default function GachaSection({
   openProfileModal,
   onSaveFortune,
   fortunesList = [],
-  customUid
+  customUid = null
 }: GachaSectionProps) {
-  const [gachaResult, setGachaResult] = useState<GachaResult | null>(null);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [selectedWebhookId, setSelectedWebhookId] = useState<string>('default');
+  const [gachaResult, setGachaResult] = useState<GachaResult | null>(null);
   const [isSendingToDiscord, setIsSendingToDiscord] = useState(false);
-  const [wishingNote, setWishingNote] = useState('');
+  const [selectedWebhookId, setSelectedWebhookId] = useState<string>('default');
+  const [wishingNote, setWishingNote] = useState<string>('');
   const [showDashboard, setShowDashboard] = useState(false);
 
-  // Automatically set default webhook to '#聊天大廳' if available
-  useEffect(() => {
-    if (discordConfig?.webhooks && discordConfig.webhooks.length > 0) {
-      const chatLoungeWebhook = discordConfig.webhooks.find(wh => {
-        const normalized = wh.name.replace('#', '').trim();
-        return normalized === '聊天大廳';
-      });
-      if (chatLoungeWebhook) {
-        setSelectedWebhookId(chatLoungeWebhook.id);
-      } else {
-        setSelectedWebhookId('default');
-      }
-    } else {
-      setSelectedWebhookId('default');
-    }
-  }, [discordConfig]);
-
-  // Check if daily reset has passed (08:00 AM)
-  const checkHasResetPassed = (lastTimeMs: number) => {
-    const lastDate = new Date(lastTimeMs);
+  // Check 8 AM reset for daily gacha
+  const checkHasResetPassed = (lastTime: number) => {
+    if (!lastTime) return true;
     const now = new Date();
+    const lastDate = new Date(lastTime);
 
-    const getEightAmTarget = (date: Date) => {
+    const getEightAm = (date: Date) => {
       const d = new Date(date);
       d.setHours(8, 0, 0, 0);
       return d.getTime();
     };
 
-    const nowEightAm = getEightAmTarget(now);
-    const lastEightAmThreshold = now.getTime() >= nowEightAm ? nowEightAm : nowEightAm - 24 * 60 * 60 * 1000;
-    return lastTimeMs < lastEightAmThreshold;
+    const nowEightAm = getEightAm(now);
+    const lastEightAm = now.getTime() >= nowEightAm ? nowEightAm : nowEightAm - 24 * 60 * 60 * 1000;
+
+    return lastDate.getTime() < lastEightAm;
   };
 
   useEffect(() => {
-    const savedResult = localStorage.getItem('nyxshade_last_gacha_result');
     const savedTime = localStorage.getItem('nyxshade_last_gacha_time');
-    const savedWish = localStorage.getItem('nyxshade_last_wishing_note');
-    if (savedResult && savedTime) {
+    const savedResult = localStorage.getItem('nyxshade_last_gacha_result');
+    const savedNote = localStorage.getItem('nyxshade_last_wishing_note');
+
+    if (savedNote) {
+      setWishingNote(savedNote);
+    }
+
+    if (savedTime && savedResult) {
       if (!checkHasResetPassed(Number(savedTime))) {
         try {
           setGachaResult(JSON.parse(savedResult));
-          if (savedWish) setWishingNote(savedWish);
         } catch (e) {
-          console.error(e);
+          console.error("Failed to parse saved gacha", e);
         }
       }
     }
   }, []);
 
-  const generateLuckyNumbers = () => {
+  const generateLuckyNumbers = (): string => {
     const numbers: number[] = [];
     while (numbers.length < 3) {
-      const n = Math.floor(Math.random() * 10);
-      if (!numbers.includes(n)) {
-        numbers.push(n);
-      }
+      const n = Math.floor(Math.random() * 99) + 1;
+      if (!numbers.includes(n)) numbers.push(n);
     }
     return `${numbers[0]}, ${numbers[1]}, ${numbers[2]}`;
   };
@@ -245,34 +232,30 @@ export default function GachaSection({
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error("Could not create 2D canvas context");
 
-    // 1. Draw slate space theme gradient
+    // 1. Draw light theme gradient
     const bgGrad = ctx.createLinearGradient(0, 0, width, height);
-    bgGrad.addColorStop(0, '#0f172a');
-    bgGrad.addColorStop(0.5, '#1e1b4b');
-    bgGrad.addColorStop(1, '#020617');
+    bgGrad.addColorStop(0, '#f8fafc');
+    bgGrad.addColorStop(1, '#f1f5f9');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, width, height);
 
-    // 2. Beautiful glowing neon border
-    ctx.strokeStyle = 'rgba(99, 102, 241, 0.45)';
-    ctx.lineWidth = 10;
-    ctx.strokeRect(5, 5, width - 10, height - 10);
-
-    // Inner gold dashed border
-    ctx.strokeStyle = 'rgba(251, 191, 36, 0.25)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(15, 15, width - 30, height - 30);
-
-    const drawRoundedRect = (x: number, y: number, w: number, h: number, r: number, fill: string | CanvasGradient, stroke?: string) => {
+    // Helper for rounded rect
+    const drawRoundedRect = (x: number, y: number, w: number, h: number, r: number, fill?: string, stroke?: string) => {
       ctx.beginPath();
       ctx.moveTo(x + r, y);
-      ctx.arcTo(x + w, y, x + w, y + h, r);
-      ctx.arcTo(x + w, y + h, x, y + h, r);
-      ctx.arcTo(x, y + h, x, y, r);
-      ctx.arcTo(x, y, x + w, y, r);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
       ctx.closePath();
-      ctx.fillStyle = fill;
-      ctx.fill();
+      if (fill) {
+        ctx.fillStyle = fill;
+        ctx.fill();
+      }
       if (stroke) {
         ctx.strokeStyle = stroke;
         ctx.lineWidth = 1.5;
@@ -280,85 +263,32 @@ export default function GachaSection({
       }
     };
 
-    // 3. Header title layout
-    ctx.fillStyle = '#f97316';
-    ctx.font = 'bold 13px Arial, "Microsoft JhengHei", sans-serif';
-    ctx.fillText("⛩️  MAPLE LUCK SHRINE  ⛩️", 35, 45);
+    // Card frame
+    drawRoundedRect(20, 20, width - 40, height - 40, 24, '#ffffff', '#e2e8f0');
 
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = 'bold 26px Arial, "Microsoft JhengHei", sans-serif';
-    ctx.fillText("🍁 楓之谷幸運神社 • 今日好運神籤 🔮", 35, 85);
-
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.beginPath();
-    ctx.moveTo(35, 105);
-    ctx.lineTo(width - 35, 105);
-    ctx.stroke();
-
-    // 4. Character info slot
-    drawRoundedRect(35, 120, 730, 42, 8, 'rgba(30, 41, 59, 0.65)', 'rgba(99, 102, 241, 0.3)');
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '14px "Microsoft JhengHei", sans-serif';
-    ctx.fillText("求籤冒險者:", 50, 146);
-    ctx.fillStyle = '#fbbf24';
-    ctx.font = 'bold 16px "Microsoft JhengHei", sans-serif';
-    ctx.fillText(ign, 135, 146);
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = '14px "Microsoft JhengHei", sans-serif';
-    ctx.fillText(`( ${job}  Lv.${level} )`, 135 + ctx.measureText(ign).width + 12, 146);
-
-    // 5. Fortune status layout and colors
-    const fortuneGrad = ctx.createLinearGradient(35, 180, 400, 585);
-    if (fortuneStatus.includes('大吉')) {
-      // Golden solar flare for Grand Fortune
-      fortuneGrad.addColorStop(0, '#ea580c');
-      fortuneGrad.addColorStop(0.5, '#d97706');
-      fortuneGrad.addColorStop(1, '#fbbf24');
-    } else if (fortuneStatus.includes('中吉')) {
-      // Lush Emerald for Medium Fortune
-      fortuneGrad.addColorStop(0, '#10b981');
-      fortuneGrad.addColorStop(1, '#0d9488');
-    } else if (fortuneStatus.includes('小吉')) {
-      // Royal sapphire blue for Small Fortune
-      fortuneGrad.addColorStop(0, '#2563eb');
-      fortuneGrad.addColorStop(1, '#4f46e5');
-    } else if (fortuneStatus.includes('末吉')) {
-      // Sunny warm amber for Minor Fortune
-      fortuneGrad.addColorStop(0, '#f97316');
-      fortuneGrad.addColorStop(1, '#ca8a04');
-    } else if (fortuneStatus.includes('吉')) {
-      // Stable slate gray for Good Fortune
-      fortuneGrad.addColorStop(0, '#475569');
-      fortuneGrad.addColorStop(1, '#334155');
-    } else if (fortuneStatus.includes('大凶')) {
-      // Doom void crimson for Catastrophic Fortune
-      fortuneGrad.addColorStop(0, '#dc2626');
-      fortuneGrad.addColorStop(0.5, '#7f1d1d');
-      fortuneGrad.addColorStop(1, '#3f0712');
-    } else if (fortuneStatus.includes('凶')) {
-      // Twilight amethyst purple for Bad Fortune
-      fortuneGrad.addColorStop(0, '#7c3aed');
-      fortuneGrad.addColorStop(1, '#5b21b6');
-    } else {
-      fortuneGrad.addColorStop(0, '#475569');
-      fortuneGrad.addColorStop(1, '#1e293b');
-    }
-
-    drawRoundedRect(35, 180, 350, 405, 16, fortuneGrad);
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-    ctx.font = 'bold 11px Arial, "Microsoft JhengHei", sans-serif';
-    ctx.fillText("TODAY FORTUNE • 今日運勢", 55, 215);
-
-    ctx.fillStyle = '#ffffff';
+    // Header
+    ctx.fillStyle = '#0f172a';
     ctx.font = 'bold 24px Arial, "Microsoft JhengHei", sans-serif';
-    ctx.fillText(fortuneStatus, 55, 252);
+    ctx.fillText("🍁 NyxShade 遠征幸運神社 • 今日好運神籤", 45, 68);
 
-    // Draw wrapped text inside state card
-    drawRoundedRect(52, 275, 315, 290, 12, 'rgba(0, 0, 0, 0.42)', 'rgba(255, 255, 255, 0.15)');
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '14px Arial, "Microsoft JhengHei", sans-serif';
+    ctx.fillStyle = '#475569';
+    ctx.font = '13px Arial, "Microsoft JhengHei", sans-serif';
+    ctx.fillText(`冒險家：${ign} (${job} Lv.${level})  •  每日 08:00 重置`, 45, 95);
 
+    // Left card: Fortune Status
+    drawRoundedRect(45, 125, 340, 440, 20, '#f8fafc', '#cbd5e1');
+
+    ctx.fillStyle = '#0284c7';
+    ctx.font = 'bold 12px Arial, "Microsoft JhengHei", sans-serif';
+    ctx.fillText("TODAY'S DESTINY • 今日命定運勢", 70, 160);
+
+    ctx.fillStyle = '#d97706';
+    ctx.font = 'bold 26px Arial, "Microsoft JhengHei", sans-serif';
+    ctx.fillText(fortuneStatus, 70, 205);
+
+    // Fortune description
+    ctx.fillStyle = '#334155';
+    ctx.font = '13.5px "Microsoft JhengHei", sans-serif';
     const wrapText = (text: string, x: number, y: number, maxWidth: number, lineHeight: number) => {
       const chars = text.split('');
       let line = '';
@@ -376,71 +306,54 @@ export default function GachaSection({
       }
       ctx.fillText(line, x, currentY);
     };
-    wrapText(fortuneDesc, 70, 310, 280, 24);
+    wrapText(fortuneDesc, 70, 255, 290, 24);
 
-    // 6. Right side widgets
+    // Right widgets
     // Widget 1: Lucky numbers
-    drawRoundedRect(410, 180, 355, 110, 16, 'rgba(15, 23, 42, 0.65)', 'rgba(99, 102, 241, 0.25)');
-    ctx.fillStyle = '#a5b4fc';
+    drawRoundedRect(410, 125, 345, 100, 16, '#f8fafc', '#e2e8f0');
+    ctx.fillStyle = '#4f46e5';
     ctx.font = 'bold 11px Arial, "Microsoft JhengHei", sans-serif';
-    ctx.fillText("LUCKY NUMBERS • 幸運數字", 430, 210);
+    ctx.fillText("LUCKY NUMBERS • 幸運數字", 430, 150);
 
-    ctx.fillStyle = '#818cf8';
-    ctx.font = 'bold 23px Courier, monospace';
-    ctx.fillText(`🎲  [ ${luckyNumbers} ]`, 430, 245);
+    ctx.fillStyle = '#4338ca';
+    ctx.font = 'bold 22px Courier, monospace';
+    ctx.fillText(`🎲  [ ${luckyNumbers} ]`, 430, 185);
 
     ctx.fillStyle = '#64748b';
-    ctx.font = '10.5px "Microsoft JhengHei", sans-serif';
-    ctx.fillText("與此尾數相配、或名字有相關的角色組隊最神！", 430, 272);
+    ctx.font = '10px "Microsoft JhengHei", sans-serif';
+    ctx.fillText("與此尾數相配、或名字有相關的角色組隊最神！", 430, 208);
 
     // Widget 2: Upgrade destination
-    drawRoundedRect(410, 300, 355, 110, 16, 'rgba(15, 23, 42, 0.65)', 'rgba(245, 158, 11, 0.25)');
-    ctx.fillStyle = '#fde047';
+    drawRoundedRect(410, 240, 345, 100, 16, '#f8fafc', '#e2e8f0');
+    ctx.fillStyle = '#b45309';
     ctx.font = 'bold 11px Arial, "Microsoft JhengHei", sans-serif';
-    ctx.fillText("BEST UPGRADE SPOT • 衝卷聖地", 430, 330);
+    ctx.fillText("BEST UPGRADE SPOT • 衝卷聖地", 430, 265);
 
-    ctx.fillStyle = '#fbbf24';
-    ctx.font = 'bold 13.5px Arial, "Microsoft JhengHei", sans-serif';
-    wrapText(`🔨 ${spot}`, 430, 358, 315, 20);
+    ctx.fillStyle = '#92400e';
+    ctx.font = 'bold 13px Arial, "Microsoft JhengHei", sans-serif';
+    wrapText(`🔨 ${spot}`, 430, 292, 305, 18);
 
     // Widget 3: Daily Almanac
-    drawRoundedRect(410, 420, 355, 165, 16, 'rgba(15, 23, 42, 0.65)', 'rgba(147, 51, 234, 0.25)');
-    ctx.fillStyle = '#d8b4fe';
+    drawRoundedRect(410, 355, 345, 210, 16, '#f8fafc', '#e2e8f0');
+    ctx.fillStyle = '#7e22ce';
     ctx.font = 'bold 11px Arial, "Microsoft JhengHei", sans-serif';
-    ctx.fillText("MAPLE DAILY ALMANAC • 冒險黃曆", 430, 445);
+    ctx.fillText("MAPLE DAILY ALMANAC • 冒險黃曆", 430, 380);
 
     if (almanac) {
-      ctx.fillStyle = '#a7f3d0';
+      ctx.fillStyle = '#065f46';
       ctx.font = '12px "Microsoft JhengHei", sans-serif';
-      ctx.fillText(`🏮 宜：${almanac.shouldDo || '打怪'}`, 430, 473);
+      ctx.fillText(`🏮 宜：${almanac.shouldDo || '打怪'}`, 430, 410);
 
-      ctx.fillStyle = '#fecdd3';
+      ctx.fillStyle = '#9f1239';
       ctx.font = '12px "Microsoft JhengHei", sans-serif';
-      ctx.fillText(`❌ 忌：${almanac.shouldNotDo || '衝裝'}`, 430, 498);
+      ctx.fillText(`❌ 忌：${almanac.shouldNotDo || '衝裝'}`, 430, 440);
 
-      ctx.fillStyle = '#e2e8f0';
+      ctx.fillStyle = '#334155';
       ctx.font = '12px "Microsoft JhengHei", sans-serif';
-      ctx.fillText(`🎨 色：${almanac.luckyColor || '無'}`, 430, 523);
-      ctx.fillText(`💍 物：${almanac.luckyItem || '無'}`, 430, 548);
-    } else {
-      ctx.fillStyle = '#64748b';
-      ctx.font = 'italic 12px "Microsoft JhengHei", sans-serif';
-      ctx.fillText("欲知今日所宜相忌，請抽取神籤...", 430, 480);
+      ctx.fillText(`🎨 色：${almanac.luckyColor || '無'}`, 430, 470);
+      ctx.fillText(`💍 物：${almanac.luckyItem || '無'}`, 430, 500);
+      ctx.fillText(`🤝 伴：${almanac.luckyPartner || '無'}`, 430, 530);
     }
-
-    // 7. Footer details
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-    ctx.beginPath();
-    ctx.moveTo(35, 595);
-    ctx.lineTo(width - 35, 595);
-    ctx.stroke();
-
-    ctx.fillStyle = '#475569';
-    ctx.font = '11px Arial, "Microsoft JhengHei", sans-serif';
-    ctx.fillText("NyxShade 命運神宮 • 壞掉不要找我喔 ✧｡٩(ˊᗜˋ)و✧｡", 35, 615);
-
-    const datestr = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-    ctx.fillText(datestr, width - 35 - ctx.measureText(datestr).width, 615);
 
     return new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((blob) => {
@@ -537,18 +450,16 @@ export default function GachaSection({
   };
 
   return (
-    <div id="gacha-panel" className="mb-8 p-6 rounded-3xl bg-gradient-to-br from-indigo-950/40 via-slate-900 to-slate-950 border border-indigo-500/25 shadow-xl relative overflow-hidden">
-      <div className="absolute right-4 top-4 opacity-10 text-7xl select-none">🔮</div>
-      
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-indigo-900/40 pb-4 mb-5">
+    <div id="gacha-panel" className="mb-6 p-4 sm:p-6 md:p-8 rounded-3xl bg-white border border-slate-200 shadow-md relative overflow-hidden">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-100 pb-4 mb-5">
         <div>
-          <span className="text-[10px] bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 px-2.5 py-1 rounded-md font-extrabold select-none">
+          <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-md font-extrabold select-none">
             MAPLE GACHA
           </span>
-          <h3 className="text-xl font-black text-slate-100 flex items-center gap-2 mt-1.5">
+          <h3 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2 mt-1.5">
             <span>🔮 楓之谷幸運神社</span>
           </h3>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             立刻來抽一發幸運神籤，看看今日衝裝與打寶運勢！（每人每天早上 08:00 重置一次喔）
           </p>
         </div>
@@ -557,10 +468,10 @@ export default function GachaSection({
           <button
             type="button"
             onClick={() => setShowDashboard(!showDashboard)}
-            className={`flex-1 md:flex-none border font-black px-4 py-3 rounded-xl shadow-md transition transform hover:-translate-y-0.5 active:scale-95 text-xs flex items-center justify-center space-x-1.5 ${
+            className={`flex-1 md:flex-none border font-black px-3.5 py-2.5 rounded-xl shadow-sm transition text-xs flex items-center justify-center space-x-1.5 cursor-pointer ${
               showDashboard 
-                ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30' 
-                : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20'
+                ? 'bg-amber-50 border-amber-300 text-amber-900' 
+                : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
             }`}
           >
             <span>📊 {showDashboard ? '收合公會大數據' : '查看公會大數據'}</span>
@@ -570,12 +481,12 @@ export default function GachaSection({
             type="button"
             onClick={handleSpinGacha}
             disabled={isSpinning}
-            className="flex-1 md:flex-none bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 disabled:from-slate-800 disabled:to-slate-900 text-white font-black px-6 py-3 rounded-xl shadow-md transition transform hover:-translate-y-0.5 active:scale-95 disabled:scale-100 disabled:translate-y-0 text-sm flex items-center justify-center space-x-2"
+            className="flex-1 md:flex-none bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:from-slate-300 disabled:to-slate-400 text-white font-black px-4 sm:px-5 py-2.5 rounded-xl shadow-md transition text-xs sm:text-sm flex items-center justify-center space-x-1.5 cursor-pointer"
           >
             {isSpinning ? (
               <span className="flex items-center space-x-1.5">
-                <span className="animate-spin inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full"></span>
-                <span>神宮加持求籤中...</span>
+                <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full"></span>
+                <span>神宮求籤中...</span>
               </span>
             ) : (
               <span>🎰 抽取今日好運轉蛋</span>
@@ -583,11 +494,11 @@ export default function GachaSection({
           </button>
 
           {gachaResult && !isSpinning && (discordConfig?.webhookUrl || (discordConfig?.webhooks && discordConfig.webhooks.length > 0)) && (
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-slate-900 border border-slate-750/35 p-1.5 rounded-xl shrink-0 w-full md:w-auto">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-slate-50 border border-slate-200 p-1 rounded-xl shrink-0 w-full md:w-auto">
               <select
                 value={selectedWebhookId}
                 onChange={(e) => setSelectedWebhookId(e.target.value)}
-                className="bg-slate-950 border border-slate-800 text-xs text-slate-300 rounded-lg py-2.5 px-2.5 outline-none font-bold sm:max-w-[140px]"
+                className="bg-white border border-slate-300 text-xs text-slate-800 rounded-lg py-2 px-2.5 outline-none font-bold sm:max-w-[130px]"
                 title="選擇要發送的 Discord 頻道"
                 disabled={isSendingToDiscord}
               >
@@ -603,13 +514,13 @@ export default function GachaSection({
                 type="button"
                 onClick={handleSendFortuneToDiscord}
                 disabled={isSendingToDiscord}
-                className="bg-gradient-to-r from-[#5865F2] to-[#454FBF] hover:from-[#4752C4] hover:to-[#3b43a9] disabled:from-slate-800 disabled:to-slate-900 text-white font-black px-4 py-2.5 rounded-xl text-xs transition transform hover:-translate-y-0.5 active:scale-95 shadow-md flex items-center justify-center space-x-1.5 shrink-0 flex-1 sm:flex-none animate-pulse"
+                className="bg-[#5865F2] hover:bg-[#4752C4] disabled:bg-slate-300 text-white font-black px-3.5 py-2 rounded-lg text-xs transition shadow-sm flex items-center justify-center space-x-1.5 shrink-0 flex-1 sm:flex-none cursor-pointer"
                 title="將此好運勢精繪成圖卡，發佈至選定的 Discord 頻道！"
               >
                 {isSendingToDiscord ? (
-                  <span className="flex items-center space-x-1.5">
-                    <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full"></span>
-                    <span>神卡繪製發送中...</span>
+                  <span className="flex items-center space-x-1">
+                    <span className="animate-spin inline-block w-3 h-3 border-2 border-white/40 border-t-white rounded-full"></span>
+                    <span>發送中...</span>
                   </span>
                 ) : (
                   <span>🖼️ 秀圖片到 DC</span>
@@ -622,8 +533,8 @@ export default function GachaSection({
 
       {/* Wishing Note Input Field */}
       {!gachaResult && !isSpinning && (
-        <div className="mb-5 bg-indigo-950/20 border border-indigo-500/10 p-4 rounded-2xl">
-          <label className="block text-xs font-black text-indigo-400 uppercase tracking-widest mb-1.5 font-mono select-none">
+        <div className="mb-4 bg-slate-50 border border-slate-200 p-3.5 sm:p-4 rounded-2xl">
+          <label className="block text-xs font-black text-indigo-700 uppercase tracking-widest mb-1.5 font-mono select-none">
             ⭐ 撰寫今日星空願望 (選填，展示於公會星空祈願牆)
           </label>
           <input
@@ -632,16 +543,16 @@ export default function GachaSection({
             value={wishingNote}
             onChange={(e) => setWishingNote(e.target.value)}
             placeholder="例如：希望今天衝10%手卷能成功一發入魂！"
-            className="w-full bg-slate-950/90 border border-slate-800/80 focus:border-indigo-500/50 rounded-xl px-4 py-3 text-xs text-slate-205 text-slate-250 placeholder-slate-600 outline-none transition"
+            className="w-full bg-white border border-slate-300 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 placeholder-slate-400 outline-none transition"
           />
         </div>
       )}
       {gachaResult && !isSpinning && (
-        <div className="mb-5 p-3.5 bg-indigo-950/15 border border-indigo-550/10 rounded-2xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="mb-4 p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2 select-none">
             <span className="text-sm">✨</span>
-            <span className="text-xs text-slate-300 font-semibold">
-              今日許願：<strong className="text-indigo-300 font-extrabold">“ {wishingNote || '希望衝裝順利、全隊爆寶！'} ”</strong>
+            <span className="text-xs text-slate-800 font-semibold">
+              今日許願：<strong className="text-indigo-800 font-extrabold">“ {wishingNote || '希望衝裝順利、全隊爆寶！'} ”</strong>
             </span>
           </div>
           <button 
@@ -657,104 +568,104 @@ export default function GachaSection({
                 showToast("✨ 星空願望儲存成功！已同步展示於公會大數據看板！", "success");
               }
             }}
-            className="text-[10px] text-indigo-400 hover:text-indigo-300 font-black bg-indigo-500/10 px-3 py-1.5 rounded-xl border border-indigo-500/25 shrink-0 select-none text-center"
+            className="text-[10px] text-indigo-700 hover:text-indigo-900 font-black bg-white px-3 py-1 rounded-xl border border-indigo-200 shrink-0 select-none text-center shadow-sm"
           >
-            ✏️ 修改今天的心願
+            ✏️ 修改心願
           </button>
         </div>
       )}
 
       {/* Gacha Results Panel */}
       {gachaResult ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-4 duration-350">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 animate-in fade-in slide-in-from-top-4 duration-350">
           {/* Status card */}
-          <div className={`p-4 rounded-2xl border transition bg-gradient-to-br ${gachaResult.fortune.color} flex flex-col justify-between shadow-lg`}>
+          <div className={`p-4 rounded-2xl border transition bg-gradient-to-br ${gachaResult.fortune.color} flex flex-col justify-between shadow-md text-white`}>
             <div>
-              <span className="text-[10.5px] font-bold text-white/70 block uppercase tracking-wide">TODAY STATUS</span>
-              <h4 className="text-lg font-black text-white mt-1 drop-shadow-md">{gachaResult.fortune.status}</h4>
+              <span className="text-[10.5px] font-bold text-white/80 block uppercase tracking-wide">TODAY STATUS</span>
+              <h4 className="text-lg font-black text-white mt-1 drop-shadow-sm">{gachaResult.fortune.status}</h4>
             </div>
-            <p className="text-xs text-white/95 leading-relaxed mt-4 bg-black/30 p-2.5 rounded-xl border border-white/10">
+            <p className="text-xs text-white/95 leading-relaxed mt-3.5 bg-black/25 p-2.5 rounded-xl border border-white/20">
               {gachaResult.fortune.desc}
             </p>
           </div>
 
           {/* Lucky numbers card */}
-          <div className="p-4 rounded-2xl border border-slate-800 bg-slate-900/60 flex flex-col justify-between shadow-lg">
+          <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 flex flex-col justify-between shadow-sm">
             <div>
               <span className="text-[10.5px] font-bold text-slate-500 block uppercase tracking-wide">LUCKY NUMBERS</span>
-              <h4 className="text-xl font-black text-indigo-400 mt-1 flex items-center space-x-1.5 font-mono">
+              <h4 className="text-lg font-black text-indigo-700 mt-1 flex items-center space-x-1.5 font-mono">
                 <span>🎲</span>
                 <span className="truncate tracking-wider">[ {gachaResult.luckyNumbers} ]</span>
               </h4>
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed mt-4 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <p className="text-xs text-slate-600 leading-relaxed mt-3.5 bg-white p-2.5 rounded-xl border border-slate-200">
               今日大發幸運數字：與身邊含有這些數字的戰友一起出征吧！
             </p>
           </div>
 
           {/* Upgrade spot card */}
-          <div className="p-4 rounded-2xl border border-slate-800 bg-slate-900/60 flex flex-col justify-between shadow-lg">
+          <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 flex flex-col justify-between shadow-sm">
             <div>
               <span className="text-[10.5px] font-bold text-slate-500 block uppercase tracking-wide">BEST UPGRADE SPOT</span>
-              <h4 className="text-base font-black text-amber-400 mt-1 flex items-center space-x-1.5">
+              <h4 className="text-base font-black text-amber-800 mt-1 flex items-center space-x-1.5">
                 <span>🔨</span>
                 <span className="truncate">衝裝首選聖地</span>
               </h4>
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed mt-4 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+            <p className="text-xs text-slate-600 leading-relaxed mt-3.5 bg-white p-2.5 rounded-xl border border-slate-200">
               {gachaResult.spot}
             </p>
           </div>
 
           {/* Daily Almanac card */}
           {gachaResult.almanac && (
-            <div className="col-span-full mt-4 p-5 rounded-2xl border border-indigo-950/60 bg-gradient-to-r from-slate-900 via-indigo-950/15 to-slate-900 shadow-xl">
-              <span className="text-[10.5px] font-black text-indigo-400 block uppercase tracking-widest font-mono mb-3.5 select-none">
+            <div className="col-span-full mt-2 p-4 sm:p-5 rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+              <span className="text-[10.5px] font-black text-indigo-700 block uppercase tracking-widest font-mono mb-3 select-none">
                 🏮 MAPLE DAILY ALMANAC • 命運遠征冒險黃曆
               </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mt-1.5">
-                <div className="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
-                  <div className="text-[10.5px] text-emerald-400 font-extrabold flex items-center gap-1.5 mb-1.5 select-none">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+                <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
+                  <div className="text-[10.5px] text-emerald-700 font-extrabold flex items-center gap-1 mb-1 select-none">
                     <span>🏮</span> 宜 (Should Do)
                   </div>
-                  <div className="text-xs font-black text-slate-200">{gachaResult.almanac.shouldDo}</div>
+                  <div className="text-xs font-black text-slate-900">{gachaResult.almanac.shouldDo}</div>
                 </div>
-                <div className="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
-                  <div className="text-[10.5px] text-rose-400 font-extrabold flex items-center gap-1.5 mb-1.5 select-none">
+                <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
+                  <div className="text-[10.5px] text-rose-700 font-extrabold flex items-center gap-1 mb-1 select-none">
                     <span>❌</span> 忌 (Don't Do)
                   </div>
-                  <div className="text-xs font-black text-slate-200">{gachaResult.almanac.shouldNotDo}</div>
+                  <div className="text-xs font-black text-slate-900">{gachaResult.almanac.shouldNotDo}</div>
                 </div>
-                <div className="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
-                  <div className="text-[10.5px] text-amber-400 font-extrabold flex items-center gap-1.5 mb-1.5 select-none">
-                    <span>🎨</span> 幸運色彩 (Color)
+                <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
+                  <div className="text-[10.5px] text-amber-800 font-extrabold flex items-center gap-1 mb-1 select-none">
+                    <span>🎨</span> 幸運色彩
                   </div>
-                  <div className="text-xs font-black text-slate-200">{gachaResult.almanac.luckyColor}</div>
+                  <div className="text-xs font-black text-slate-900">{gachaResult.almanac.luckyColor}</div>
                 </div>
-                <div className="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
-                  <div className="text-[10.5px] text-indigo-400 font-extrabold flex items-center gap-1.5 mb-1.5 select-none">
-                    <span>💍</span> 命定神物 (Item)
+                <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
+                  <div className="text-[10.5px] text-indigo-700 font-extrabold flex items-center gap-1 mb-1 select-none">
+                    <span>💍</span> 命定神物
                   </div>
-                  <div className="text-xs font-black text-slate-200">{gachaResult.almanac.luckyItem}</div>
+                  <div className="text-xs font-black text-slate-900">{gachaResult.almanac.luckyItem}</div>
                 </div>
-                <div className="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
-                  <div className="text-[10.5px] text-purple-400 font-extrabold flex items-center gap-1.5 mb-1.5 select-none">
-                    <span>🤝</span> 命伴職業 (Companion)
+                <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
+                  <div className="text-[10.5px] text-purple-700 font-extrabold flex items-center gap-1 mb-1 select-none">
+                    <span>🤝</span> 命伴職業
                   </div>
-                  <div className="text-xs font-black text-slate-200">{gachaResult.almanac.luckyPartner}</div>
+                  <div className="text-xs font-black text-slate-900">{gachaResult.almanac.luckyPartner}</div>
                 </div>
               </div>
             </div>
           )}
         </div>
       ) : (
-        <div className="border border-dashed border-slate-800 rounded-2xl p-8 text-center text-slate-500 text-xs italic bg-slate-900/10 select-none">
-          🔮 還沒有求籤喔！請點選上方「🎰 抽取今日好運轉蛋`」啟動運勢預測。
+        <div className="border border-dashed border-slate-300 rounded-2xl p-6 text-center text-slate-500 text-xs italic bg-slate-50 select-none">
+          🔮 還沒有求籤喔！請點選上方「🎰 抽取今日好運轉蛋」啟動運勢預測。
         </div>
       )}
 
       {showDashboard && (
-        <div className="mt-8 pt-8 border-t border-indigo-900/40">
+        <div className="mt-6 pt-6 border-t border-slate-200">
           <FortuneDashboard
             fortunesList={fortunesList}
             activeCharacter={activeCharacter}
