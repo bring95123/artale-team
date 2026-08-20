@@ -32,6 +32,7 @@ import SynergyAnalyzer from './components/SynergyAnalyzer';
 import FortuneDashboard from './components/FortuneDashboard';
 import DiscordThreadModal from './components/DiscordThreadModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
+import { DropTableSection } from './components/DropTableSection';
 
 // Helper to format date times beautifully
 const formatDateTime = (dateTimeStr: string) => {
@@ -61,6 +62,34 @@ export default function App() {
 
   const [user, setUser] = useState<any>(null);
 
+  // Theme State (Dark / Light)
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    try {
+      const saved = localStorage.getItem('nyxshade_theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+    } catch (e) {}
+    return 'dark';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('nyxshade_theme', theme);
+    } catch (e) {}
+    const root = document.documentElement;
+    const body = document.body;
+    if (theme === 'light') {
+      root.classList.remove('dark');
+      root.classList.add('light');
+      body.classList.remove('dark');
+      body.classList.add('light');
+    } else {
+      root.classList.remove('light');
+      root.classList.add('dark');
+      body.classList.remove('light');
+      body.classList.add('dark');
+    }
+  }, [theme]);
+
   // States
   const [discordUser, setDiscordUser] = useState<DiscordUser | null>(() => {
     try {
@@ -84,7 +113,7 @@ export default function App() {
   const [raids, setRaids] = useState<any[]>([]);
   const [fortunes, setFortunes] = useState<any[]>([]);
   const [currentRaidId, setCurrentRaidId] = useState<string | null>(null);
-  const [lobbyTab, setLobbyTab] = useState<'recruitment' | 'gacha'>('recruitment');
+  const [lobbyTab, setLobbyTab] = useState<'recruitment' | 'gacha' | 'drop_table'>('recruitment');
 
   const [profile, setProfile] = useState<Profile>({
     activeCharacterIndex: 0,
@@ -381,11 +410,9 @@ export default function App() {
     fetchProfile();
   }, [db, customUid, discordUser]);
 
-  // Trigger floating chat automatically on entering a raid
+  // Keep floating chat closed by default (only opened when user clicks the floating button)
   useEffect(() => {
-    if (currentRaidId) {
-      setIsChatOpen(true);
-    } else {
+    if (!currentRaidId) {
       setIsChatOpen(false);
     }
   }, [currentRaidId]);
@@ -1199,6 +1226,20 @@ export default function App() {
 
               <button
                 type="button"
+                onClick={() => {
+                  const nextTheme = theme === 'dark' ? 'light' : 'dark';
+                  setTheme(nextTheme);
+                  showToast(`已切換為【${nextTheme === 'dark' ? '🌙 暗色模式' : '☀️ 淺色模式'}】`);
+                }}
+                className="bg-slate-900/80 hover:bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/50 rounded-xl px-2 sm:px-2.5 py-1.5 flex items-center transition text-xs shadow-md h-9 sm:h-10 select-none text-amber-400 font-extrabold cursor-pointer space-x-1 shrink-0"
+                title={`點擊切換為${theme === 'dark' ? '淺色模式 (Light Mode)' : '暗色模式 (Dark Mode)'}`}
+              >
+                <span className="text-sm">{theme === 'dark' ? '🌙' : '☀️'}</span>
+                <span className="hidden sm:inline text-[11px]">{theme === 'dark' ? '暗色' : '淺色'}</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setShowPWAModal(true)}
                 className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 hover:from-amber-500/20 hover:to-orange-500/20 border border-amber-500/30 hover:border-amber-500/60 rounded-xl px-2 sm:px-3 py-1.5 flex items-center transition text-xs shadow-md h-9 sm:h-10 select-none text-amber-300 font-extrabold cursor-pointer space-x-1 shrink-0"
                 title="將 NyxShade 安裝為手機/電腦獨立應用程式 (PWA)"
@@ -1282,14 +1323,14 @@ export default function App() {
           {!activeRaid ? (
             /* ==================== 1. MAIN LOBBY PAGE ==================== */
             <div>
-              <div className="mb-8 p-8 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 opacity-10 text-9xl">🍁</div>
+              <div className="hero-banner mb-8 p-8 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 shadow-xl relative overflow-hidden text-white">
+                <div className="absolute top-0 right-0 opacity-10 text-9xl pointer-events-none">🍁</div>
                 <div className="relative z-10 max-w-2xl">
-                  <span className="px-3.5 py-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs rounded-full font-bold">
+                  <span className="px-3.5 py-1.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs rounded-full font-bold inline-block">
                     跨平台多端同步
                   </span>
                   <h2 className="text-3xl md:text-4xl font-black mt-4 text-white">Artale 遠征隊組隊</h2>
-                  <p className="text-slate-400 mt-2.5 text-base md:text-lg whitespace-pre-line leading-relaxed">
+                  <p className="text-slate-300 mt-2.5 text-base md:text-lg whitespace-pre-line leading-relaxed">
                     多身分角色與 Discord 驗證登入！
                   </p>
                   <div className="mt-6 flex flex-wrap gap-3 select-none">
@@ -1297,19 +1338,19 @@ export default function App() {
                       <>
                         <button 
                           onClick={() => setIsCreating(true)}
-                          className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold px-6 py-3 rounded-xl shadow-lg transition flex items-center space-x-2 text-sm md:text-base"
+                          className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 !text-white font-extrabold px-6 py-3 rounded-xl shadow-lg transition flex items-center space-x-2 text-sm md:text-base cursor-pointer"
                         >
-                          <span>➕ 發起全新遠征隊</span>
+                          <span className="!text-white">➕ 發起全新遠征隊</span>
                         </button>
                         <button 
                           onClick={() => setShowBossManagerModal(true)}
-                          className="bg-slate-900 hover:bg-slate-850 text-violet-300 font-extrabold px-6 py-3 rounded-xl border border-slate-800 transition text-sm md:text-base flex items-center space-x-2"
+                          className="bg-slate-800/90 hover:bg-slate-750 !text-violet-200 font-extrabold px-6 py-3 rounded-xl border border-slate-700 transition text-sm md:text-base flex items-center space-x-2 cursor-pointer"
                         >
                           <span>👾 自訂 Boss 設置</span>
                         </button>
                         <button 
                           onClick={() => setShowJobManagerModal(true)}
-                          className="bg-slate-900 hover:bg-slate-850 text-teal-300 font-extrabold px-6 py-3 rounded-xl border border-slate-800 transition text-sm md:text-base flex items-center space-x-2"
+                          className="bg-slate-800/90 hover:bg-slate-750 !text-teal-200 font-extrabold px-6 py-3 rounded-xl border border-slate-700 transition text-sm md:text-base flex items-center space-x-2 cursor-pointer"
                         >
                           <span>⚔️ 職業管理</span>
                         </button>
@@ -1317,34 +1358,41 @@ export default function App() {
                     )}
                     <button 
                       onClick={() => setShowProfileModal(true)}
-                      className="bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold px-5 py-3 rounded-xl border border-slate-750 transition text-sm md:text-base flex items-center space-x-2"
+                      className="bg-slate-800 hover:bg-slate-700 !text-white font-bold px-5 py-3 rounded-xl border border-slate-700 transition text-sm md:text-base flex items-center space-x-2 shadow cursor-pointer"
                     >
                       {discordUser ? (
                         <img src={discordUser.avatar} className="w-5 h-5 rounded-full object-cover" />
                       ) : (
                         <span>⚙️</span>
                       )}
-                      <span>管理我的角色卡 / 連結 Discord</span>
+                      <span className="!text-white">管理我的角色卡 / 連結 Discord</span>
                     </button>
                   </div>
                 </div>
               </div>
 
               {/* Lobby Tabs Picker */}
-              <div className="flex flex-wrap sm:flex-nowrap bg-slate-900 border border-slate-800 p-1.5 rounded-2xl mb-8 max-w-md select-none gap-1">
+              <div className="flex flex-wrap sm:flex-nowrap bg-slate-900 border border-slate-800 p-1.5 rounded-2xl mb-8 max-w-lg select-none gap-1">
                 <button
                   type="button"
                   onClick={() => setLobbyTab('recruitment')}
-                  className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${lobbyTab === 'recruitment' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-slate-200'}`}
+                  className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 cursor-pointer whitespace-nowrap ${lobbyTab === 'recruitment' ? 'bg-gradient-to-r from-orange-500 to-amber-500 !text-white shadow-md font-black' : 'text-slate-400 hover:text-slate-200'}`}
                 >
-                  <span>📢 遠征招募大廳</span>
+                  <span className={lobbyTab === 'recruitment' ? '!text-white' : ''}>📢 遠征招募大廳</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setLobbyTab('gacha')}
-                  className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${lobbyTab === 'gacha' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-slate-200'}`}
+                  className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 cursor-pointer whitespace-nowrap ${lobbyTab === 'gacha' ? 'bg-gradient-to-r from-orange-500 to-amber-500 !text-white shadow-md font-black' : 'text-slate-400 hover:text-slate-200'}`}
                 >
-                  <span>🔮 幸運神社</span>
+                  <span className={lobbyTab === 'gacha' ? '!text-white' : ''}>🔮 幸運神社</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLobbyTab('drop_table')}
+                  className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 cursor-pointer whitespace-nowrap ${lobbyTab === 'drop_table' ? 'bg-gradient-to-r from-orange-500 to-amber-500 !text-white shadow-md font-black' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  <span className={lobbyTab === 'drop_table' ? '!text-white' : ''}>📦 掉落物查詢</span>
                 </button>
               </div>
 
@@ -1504,6 +1552,10 @@ export default function App() {
                   fortunesList={fortunes}
                   customUid={customUid}
                 />
+              )}
+
+              {lobbyTab === 'drop_table' && (
+                <DropTableSection />
               )}
             </div>
           ) : (

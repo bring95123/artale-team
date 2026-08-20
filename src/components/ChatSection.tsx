@@ -182,28 +182,28 @@ export default function ChatSection({
   return (
     <div className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 z-50 flex flex-col items-end space-y-3 font-semibold">
       {isChatOpen && (
-        <div className={`bg-white border border-slate-200 rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col transition-all duration-300 ease-in-out animate-in fade-in slide-in-from-bottom-5 ${
+        <div className={`bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col transition-all duration-300 ease-in-out animate-in fade-in slide-in-from-bottom-5 ${
           isChatMaximized 
             ? "fixed inset-3 sm:inset-6 md:inset-10 md:m-auto md:w-full md:max-w-4xl md:h-[80vh] h-[calc(100vh-1.5rem)] w-[calc(100vw-1.5rem)] z-50" 
             : "h-[460px] sm:h-[500px] w-[340px] sm:w-96 max-w-[calc(100vw-2rem)] max-h-[75vh]"
         }`}>
-          <div className="border-b border-slate-100 pb-3 mb-3 flex items-center justify-between">
+          <div className="border-b border-slate-800/80 pb-3 mb-3 flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <span className="text-xl">💬</span>
-              <h3 className="font-extrabold text-sm sm:text-base text-slate-900">遠征即時討論區</h3>
-              <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] px-2 py-0.5 rounded-full font-bold font-mono">
+              <h3 className="font-extrabold text-sm sm:text-base text-slate-100">遠征即時討論區</h3>
+              <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-[10px] px-2 py-0.5 rounded-full font-bold font-mono">
                 {chatMessages.length} 則訊息
               </span>
             </div>
             
             <div className="flex items-center space-x-2">
-              <span className="text-[10px] text-emerald-600 font-mono font-bold">● 實時</span>
+              <span className="text-[10px] text-emerald-400 font-mono font-bold">● 實時</span>
               
               {/* Maximize toggle */}
               <button 
                 type="button" 
                 onClick={() => setIsChatMaximized(!isChatMaximized)}
-                className="text-slate-500 hover:text-slate-800 text-xs p-1.5 bg-slate-100 rounded-lg hover:bg-slate-200 transition"
+                className="text-slate-400 hover:text-white text-xs p-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg transition cursor-pointer"
                 title={isChatMaximized ? "恢復原本大小" : "放大至全螢幕"}
               >
                 {isChatMaximized ? (
@@ -221,7 +221,8 @@ export default function ChatSection({
               <button 
                 type="button" 
                 onClick={() => setIsChatOpen(false)}
-                className="text-slate-500 hover:text-slate-800 text-xs p-1.5 bg-slate-100 rounded-lg hover:bg-slate-200 transition"
+                className="text-slate-400 hover:text-white text-xs p-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg transition cursor-pointer"
+                title="關閉討論視窗"
               >
                 ✕
               </button>
@@ -300,11 +301,11 @@ export default function ChatSection({
                           <div className={`px-3.5 py-2 rounded-2xl text-xs sm:text-sm leading-relaxed break-all ${
                             isMe 
                               ? isRecalled
-                                ? 'bg-slate-100 text-slate-400 border border-slate-200 rounded-tr-none italic'
-                                : 'bg-indigo-600 text-white rounded-tr-none shadow-sm' 
+                                ? 'bg-slate-800 text-slate-400 border border-slate-700 rounded-tr-none italic'
+                                : 'bg-indigo-600 !text-white rounded-tr-none shadow-sm font-medium' 
                               : isRecalled
-                                ? 'bg-slate-100 text-slate-400 border border-slate-200 rounded-tl-none italic'
-                                : 'bg-slate-100 text-slate-900 rounded-tl-none border border-slate-200'
+                                ? 'bg-slate-800 text-slate-400 border border-slate-700 rounded-tl-none italic'
+                                : 'bg-slate-800 text-slate-100 rounded-tl-none border border-slate-700'
                           }`}>
                             {isRecalled ? (
                               <span className="flex items-center space-x-1 opacity-80 select-none">
@@ -322,7 +323,7 @@ export default function ChatSection({
                                 <button 
                                   type="button" 
                                   onClick={() => handleRecallMessage(msg.id!)}
-                                  className="hover:text-indigo-600 hover:underline"
+                                  className="hover:text-indigo-400 hover:underline cursor-pointer"
                                 >
                                   [收回]
                                 </button>
@@ -331,7 +332,7 @@ export default function ChatSection({
                                 <button 
                                   type="button" 
                                   onClick={() => handleDeleteMessage(msg.id!)}
-                                  className="hover:text-rose-600 hover:underline"
+                                  className="hover:text-rose-400 hover:underline cursor-pointer"
                                 >
                                   [刪除]
                                 </button>
@@ -348,19 +349,19 @@ export default function ChatSection({
           </div>
 
           {/* Form input */}
-          <form onSubmit={handleSendMessage} className="flex gap-2 border-t border-slate-100 pt-3">
+          <form onSubmit={handleSendMessage} className="flex gap-2 border-t border-slate-800/80 pt-3">
             <input
               type="text"
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               placeholder={activeCharacter && activeCharacter.ign ? "輸入訊息與大家討論..." : "請先設定角色卡才能發言"}
               disabled={!activeCharacter || !activeCharacter.ign}
-              className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 placeholder-slate-400 disabled:opacity-50"
+              className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 placeholder-slate-500 disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={!chatInput.trim() || !activeCharacter || !activeCharacter.ign}
-              className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white text-xs font-black px-3.5 sm:px-4 py-2 rounded-xl transition disabled:opacity-50 cursor-pointer"
+              className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-700 !text-white text-xs font-black px-3.5 sm:px-4 py-2 rounded-xl transition disabled:opacity-50 cursor-pointer shadow"
             >
               傳送
             </button>
