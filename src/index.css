@@ -6,10 +6,19 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
-/* Custom styles for high-fidelity light gaming UX */
-body {
-  background-color: #f8fafc; /* bg-slate-50 */
-  color: #0f172a; /* text-slate-900 */
+/* Custom styles for high-fidelity dark gaming UX */
+html, body {
+  background-color: #020617; /* bg-slate-950 */
+  color: #f8fafc; /* text-slate-100 */
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 /* Scrollbar styling */

@@ -1168,20 +1168,20 @@ export default function App() {
   const customBossesList = bosses.filter(b => b.isCustom);
 
   return (
-    <div className="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col justify-between">
-      <div>
+    <div className="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col justify-between w-full max-w-full overflow-x-hidden">
+      <div className="w-full max-w-full overflow-x-hidden">
         {/* Header navigation bar */}
-        <header className="sticky top-0 z-30 bg-slate-900/85 backdrop-blur border-b border-slate-800 px-4 py-3 shadow-lg select-none">
-          <div className="max-w-6xl mx-auto flex items-center justify-between font-bold">
-            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentRaidId(null)}>
-              <div className="text-3xl">🍁</div>
-              <div>
-                <h1 className="text-lg md:text-xl font-black bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent leading-none">
-                  NyxShade遠征隊組隊系統
+        <header className="sticky top-0 z-30 bg-slate-900/90 backdrop-blur border-b border-slate-800 px-3 sm:px-4 py-2.5 sm:py-3 shadow-lg select-none w-full">
+          <div className="max-w-6xl mx-auto flex items-center justify-between font-bold gap-2">
+            <div className="flex items-center space-x-2 sm:space-x-3 cursor-pointer shrink-0 min-w-0" onClick={() => setCurrentRaidId(null)}>
+              <div className="text-2xl sm:text-3xl shrink-0">🍁</div>
+              <div className="min-w-0">
+                <h1 className="text-base sm:text-xl font-black bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent leading-tight truncate">
+                  NyxShade
                 </h1>
                 <p 
                   onClick={handleSecretClick}
-                  className="text-[10px] md:text-xs text-slate-500 cursor-pointer active:text-amber-400 hover:text-slate-400 transition mt-1"
+                  className="hidden sm:block text-[10px] md:text-xs text-slate-500 cursor-pointer active:text-amber-400 hover:text-slate-400 transition truncate max-w-[280px]"
                   title="快速點擊5次可管理金鑰"
                 >
                   不負責宣告：Hi我是純粹，壞掉不要找我歐✧｡٩(ˊ導ˋ)و✧｡
@@ -1190,7 +1190,7 @@ export default function App() {
             </div>
 
             {/* Profile quick swap bar */}
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-1.5 sm:space-x-2.5 shrink-0">
               <div className="hidden md:block">
                 {dbStatus === 'connecting' && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-lg text-[11px] font-bold animate-pulse">⏳ 連線中</span>}
                 {dbStatus === 'connected' && <span className="bg-emerald-500/10 text-emerald-450 border border-emerald-500/20 px-2.5 py-1 rounded-lg text-[11px] font-bold">🟢 連線成功</span>}
@@ -1200,45 +1200,44 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setShowPWAModal(true)}
-                className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 hover:from-amber-500/20 hover:to-orange-500/20 border border-amber-500/30 hover:border-amber-500/60 rounded-xl px-3 py-1.5 flex items-center transition text-xs shadow-md h-10 select-none text-amber-300 font-extrabold cursor-pointer space-x-1.5"
+                className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 hover:from-amber-500/20 hover:to-orange-500/20 border border-amber-500/30 hover:border-amber-500/60 rounded-xl px-2 sm:px-3 py-1.5 flex items-center transition text-xs shadow-md h-9 sm:h-10 select-none text-amber-300 font-extrabold cursor-pointer space-x-1 shrink-0"
                 title="將 NyxShade 安裝為手機/電腦獨立應用程式 (PWA)"
               >
                 <span>📲</span>
-                <span className="hidden sm:inline">安裝 App</span>
+                <span className="hidden md:inline">安裝 App</span>
               </button>
 
               <button
                 onClick={() => setShowIssueReportModal(true)}
-                className="bg-slate-900/80 hover:bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-rose-900/50 rounded-xl px-3 py-1.5 flex items-center transition text-xs shadow-md h-10 select-none text-rose-305 text-rose-400 font-extrabold cursor-pointer"
+                className="bg-slate-900/80 hover:bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-rose-900/50 rounded-xl px-2 sm:px-3 py-1.5 flex items-center transition text-xs shadow-md h-9 sm:h-10 select-none text-rose-400 font-extrabold cursor-pointer shrink-0"
                 title="遇到網頁故障或有功能點子？點此立即透過 Discord 轉傳管道回報！"
               >
-                <span className="mr-1">🐛</span> 問題回報
+                <span>🐛</span>
+                <span className="hidden md:inline ml-1">問題回報</span>
               </button>
 
               {profileLoaded ? (
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
                   <button 
                     onClick={() => setShowProfileModal(true)}
-                    className="bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-xl px-3 py-1.5 flex items-center transition text-sm shadow-md space-x-2 h-10 select-none"
+                    className="bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-xl px-2 sm:px-3 py-1.5 flex items-center transition text-xs sm:text-sm shadow-md space-x-1.5 h-9 sm:h-10 select-none max-w-[125px] sm:max-w-none"
                   >
                     {discordUser && (
                       <img 
                         src={discordUser.avatar} 
-                        className="w-7 h-7 rounded-full border border-[#5865F2]/60 object-cover shrink-0" 
+                        className="w-5 h-5 sm:w-6 sm:h-6 rounded-full border border-[#5865F2]/60 object-cover shrink-0" 
                         alt="Discord Avatar"
                       />
                     )}
                     {activeCharacter.ign ? (
-                      <span className="flex items-center space-x-1.5 max-w-[130px] sm:max-w-none truncate">
-                        <JobIcon jobName={activeCharacter.job} sizeClass="w-4 h-4" />
-                        <span className="font-extrabold text-slate-100 text-xs truncate">
-                          {activeCharacter.ign} <span className="text-[10px] text-slate-400 font-normal">({activeCharacter.job})</span>
+                      <span className="flex items-center space-x-1 min-w-0 truncate">
+                        <JobIcon jobName={activeCharacter.job} sizeClass="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                        <span className="font-extrabold text-slate-100 text-[11px] sm:text-xs truncate">
+                          {activeCharacter.ign} <span className="hidden sm:inline text-[10px] text-slate-400 font-normal">({activeCharacter.job})</span>
                         </span>
                       </span>
                     ) : (
-                      <span className="flex items-center space-x-1">
-                        <span className="text-amber-400 text-xs font-bold">⚙️ 設定出團身分</span>
-                      </span>
+                      <span className="text-amber-400 text-xs font-bold whitespace-nowrap">⚙️ 設定</span>
                     )}
                   </button>
 
@@ -1254,10 +1253,10 @@ export default function App() {
                         updateDoc(publicRef, { activeCharacterIndex: nextIdx });
                         showToast(`已快速切換出團角色為：【${profile.characters[nextIdx].ign} (${profile.characters[nextIdx].job})】`);
                       }}
-                      className="bg-slate-900 border border-slate-800 rounded-xl px-2 py-1.5 text-xs text-amber-400 font-bold focus:outline-none cursor-pointer hover:border-slate-700 transition h-10"
+                      className="bg-slate-900 border border-slate-800 rounded-xl px-1.5 sm:px-2 py-1 text-[11px] sm:text-xs text-amber-400 font-bold focus:outline-none cursor-pointer hover:border-slate-700 transition h-9 sm:h-10 max-w-[105px] sm:max-w-none"
                     >
                       {profile.characters.map((c, i) => (
-                        <option key={i} value={i} className="bg-slate-900 font-bold text-slate-205">
+                        <option key={i} value={i} className="bg-slate-900 font-bold text-slate-200">
                           🔄 {c.ign} ({c.job})
                         </option>
                       ))}
@@ -1265,7 +1264,7 @@ export default function App() {
                   )}
                 </div>
               ) : (
-                <div className="h-10 w-32 bg-slate-900 animate-pulse rounded-xl border border-slate-800" />
+                <div className="h-9 sm:h-10 w-24 sm:w-32 bg-slate-900 animate-pulse rounded-xl border border-slate-800" />
               )}
             </div>
           </div>
@@ -1705,27 +1704,29 @@ export default function App() {
                     const renderVoterBadges = (votersList: any[], emoji: string) => {
                       if (votersList.length === 0) return null;
                       return (
-                        <div className="flex flex-wrap gap-2.5 mt-2">
+                        <div className="flex flex-wrap gap-2 mt-2">
                           {votersList.map((voter, vIdx) => {
                             const alreadyInRaid = activeRaid.participants?.some((p: any) => p.userId === voter.userId && p.ign === voter.ign);
                             return (
                               <div 
                                 key={voter.userId + '-' + voter.ign + '-' + voter.job + '-' + vIdx}
-                                className="inline-flex items-center space-x-2 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl text-sm transition hover:border-slate-700 max-w-full"
+                                className="flex flex-wrap items-center gap-1.5 bg-slate-950 border border-slate-800 px-2.5 py-1.5 rounded-xl text-xs transition hover:border-slate-700 max-w-full"
                               >
-                                <span className="text-base shrink-0 select-none">{emoji}</span>
+                                <span className="text-sm shrink-0 select-none">{emoji}</span>
                                 
                                 {voter.discord && (
-                                  <span className="inline-flex items-center space-x-1 bg-[#5865F2]/10 border border-[#5865F2]/30 px-2 py-0.5 rounded-lg text-[10.5px] font-black text-indigo-300 shadow shrink-0 select-none">
-                                    <img src={voter.discord.avatar} className="w-4 h-4 rounded-full object-cover" />
-                                    <span className="max-w-[70px] truncate">@{voter.discord.username}</span>
+                                  <span className="inline-flex items-center space-x-1 bg-[#5865F2]/10 border border-[#5865F2]/30 px-1.5 py-0.5 rounded-md text-[10px] font-black text-indigo-300 shadow shrink-0 select-none max-w-[90px] truncate">
+                                    <img src={voter.discord.avatar} className="w-3.5 h-3.5 rounded-full object-cover shrink-0" />
+                                    <span className="truncate">@{voter.discord.username}</span>
                                   </span>
                                 )}
 
-                                <span className="font-extrabold text-slate-100 whitespace-nowrap select-all" title={voter.ign}>{voter.ign}</span>
+                                <span className="font-extrabold text-slate-100 max-w-[120px] truncate select-all" title={voter.ign}>
+                                  {voter.ign}
+                                </span>
                                 
-                                <span className="text-[11px] text-slate-400 font-bold shrink-0 flex items-center space-x-1 bg-slate-900 border border-slate-800/80 px-2 py-0.5 rounded-lg select-none">
-                                  <JobIcon jobName={voter.job} sizeClass="w-3.5 h-3.5" />
+                                <span className="text-[10.5px] text-slate-400 font-bold shrink-0 flex items-center space-x-1 bg-slate-900 border border-slate-800/80 px-1.5 py-0.5 rounded-lg select-none">
+                                  <JobIcon jobName={voter.job} sizeClass="w-3 h-3" />
                                   <span className="text-slate-300 font-extrabold">{voter.job || '無'}</span>
                                   <span className="text-slate-500">•</span>
                                   <span className="text-white font-mono font-bold">Lv.{voter.level || '?'}</span>
@@ -1737,23 +1738,23 @@ export default function App() {
                                     onClick={() => {
                                       setVoterDetailModal({ isOpen: true, voter });
                                     }}
-                                    className="text-[10px] bg-slate-900 hover:bg-slate-850 hover:border-slate-700 border border-slate-800 px-2 py-1 rounded text-amber-300 transition shrink-0 flex items-center space-x-1 font-bold active:scale-95"
+                                    className="text-[10px] bg-slate-900 hover:bg-slate-850 hover:border-slate-700 border border-slate-800 px-1.5 py-0.5 rounded text-amber-300 transition shrink-0 font-bold active:scale-95"
                                   >
-                                    <span>詳細</span>
+                                    詳細
                                   </button>
                                 )}
                                 
                                 {isCreator && (
-                                  <div className="flex items-center space-x-1.5 ml-2 border-l border-slate-800 pl-2 select-none">
+                                  <div className="flex items-center space-x-1 ml-1 border-l border-slate-800 pl-1.5 select-none shrink-0">
                                     {alreadyInRaid ? (
-                                      <span className="text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded text-xs shrink-0 select-none">
+                                      <span className="text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded text-[10px] shrink-0 select-none">
                                         已錄取
                                       </span>
                                     ) : (
                                       <button
                                         type="button"
                                         onClick={() => handleQuickEnroll(activeRaid.id, voter)}
-                                        className="bg-indigo-600 hover:bg-indigo-505 text-white font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
+                                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-1.5 py-0.5 rounded text-[10px] transition active:scale-95 shrink-0"
                                       >
                                         ➕ 錄取
                                       </button>
@@ -1761,9 +1762,10 @@ export default function App() {
                                     <button
                                       type="button"
                                       onClick={() => handleRemoveVote(activeRaid.id, voter.userId, voter.ign, voter.job)}
-                                      className="bg-rose-950 hover:bg-rose-900 border border-rose-900/60 text-rose-300 font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
+                                      className="bg-rose-950 hover:bg-rose-900 border border-rose-900/60 text-rose-300 font-black px-1.5 py-0.5 rounded text-[10px] transition active:scale-95 shrink-0"
+                                      title="剔除"
                                     >
-                                      🗑️ 剔除
+                                      🗑️
                                     </button>
                                   </div>
                                 )}
@@ -1775,40 +1777,40 @@ export default function App() {
                     };
 
                     return (
-                      <div className="p-5 rounded-2xl border bg-slate-950 border-slate-800 flex flex-col gap-5">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="p-4 sm:p-5 rounded-2xl border bg-slate-950 border-slate-800 flex flex-col gap-4">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                           <div className="select-none">
-                            <h4 className="text-base font-bold text-slate-200">
+                            <h4 className="text-sm sm:text-base font-bold text-slate-200">
                               您本週是否有意願與時間參加【{boss?.name.split(' (')[0]}】突襲團？
                             </h4>
                             <p className="text-xs text-slate-500 mt-1">選取會自動代入右上角的當前角色身分卡。</p>
                           </div>
-                          <div className="flex items-center space-x-3 select-none">
+                          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:space-x-3 select-none w-full md:w-auto">
                             <button
                               type="button"
                               onClick={() => handleVoteTime(activeRaid.id, 'interest', 'yes')}
-                              className={`px-6 py-3 rounded-xl text-sm font-black transition flex items-center gap-1.5 active:scale-95 ${myChoice === 'yes' ? 'bg-emerald-600 text-white shadow shadow-emerald-500/25' : 'bg-slate-800 hover:bg-slate-750 text-slate-300'}`}
+                              className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-1.5 active:scale-95 ${myChoice === 'yes' ? 'bg-emerald-600 text-white shadow shadow-emerald-500/25' : 'bg-slate-800 hover:bg-slate-750 text-slate-300'}`}
                             >
                               <span>🟢 可以配合</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => handleVoteTime(activeRaid.id, 'interest', 'no')}
-                              className={`px-6 py-3 rounded-xl text-sm font-black transition flex items-center gap-1.5 active:scale-95 ${myChoice === 'no' ? 'bg-rose-600 text-white shadow shadow-rose-500/25' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
+                              className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-1.5 active:scale-95 ${myChoice === 'no' ? 'bg-rose-600 text-white shadow shadow-rose-500/25' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
                             >
                               <span>🔴 不行參戰</span>
                             </button>
                           </div>
                         </div>
 
-                        <div className="border-t border-slate-800 pt-4 space-y-3 font-mono">
+                        <div className="border-t border-slate-800 pt-3 space-y-3 font-mono">
                           <div>
                             <span className="text-xs text-emerald-400 font-bold block mb-1">🟢 行程可以配合的人員 ({yesVotes.length} 人)：</span>
-                            {yesVotes.length > 0 ? renderVoterBadges(yesVotes, '🟢') : <span className="text-slate-650 text-xs italic block py-1 font-sans">目前無隊員登記</span>}
+                            {yesVotes.length > 0 ? renderVoterBadges(yesVotes, '🟢') : <span className="text-slate-500 text-xs italic block py-1 font-sans">目前無隊員登記</span>}
                           </div>
                           <div>
-                            <span className="text-xs text-rose-450 font-bold block mb-1 text-rose-400">🔴 行程不克參加的人員 ({noVotes.length} 人)：</span>
-                            {noVotes.length > 0 ? renderVoterBadges(noVotes, '🔴') : <span className="text-slate-650 text-xs italic block py-1 font-sans">目前無隊員登記</span>}
+                            <span className="text-xs text-rose-400 font-bold block mb-1">🔴 行程不克參加的人員 ({noVotes.length} 人)：</span>
+                            {noVotes.length > 0 ? renderVoterBadges(noVotes, '🔴') : <span className="text-slate-500 text-xs italic block py-1 font-sans">目前無隊員登記</span>}
                           </div>
                         </div>
                       </div>
@@ -1817,17 +1819,17 @@ export default function App() {
                 </div>
               ) : (
                 /* datetime/time slots standard poll layout */
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
-                  <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-4 select-none">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl">
+                  <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-3 sm:pb-4 select-none">
                     <div>
-                      <h3 className="text-lg md:text-xl font-extrabold text-white">📅 候選出團時間投票</h3>
-                      <p className="text-xs md:text-sm text-slate-400 mt-1">
+                      <h3 className="text-base sm:text-xl font-extrabold text-white">📅 候選出團時間投票</h3>
+                      <p className="text-xs sm:text-sm text-slate-400 mt-1">
                         請選擇可以配合的時間代入排班。再次點擊同個按鈕可智慧反選取消。
                       </p>
                     </div>
                   </div>
 
-                  <div className="space-y-6">
+                  <div className="space-y-4 sm:space-y-6">
                     {activeRaid.proposedTimes?.map((time: string, idx: number) => {
                       const yesVotes = activeRaid.votes?.filter((v: any) => v.votes?.[idx] === 'yes') || [];
                       const maybeVotes = activeRaid.votes?.filter((v: any) => v.votes?.[idx] === 'maybe') || [];
@@ -1841,28 +1843,30 @@ export default function App() {
                       const renderVoterBadges = (votersList: any[], emoji: string) => {
                         if (votersList.length === 0) return null;
                         return (
-                          <div className="flex flex-wrap gap-2.5 mt-2 animate-in fade-in duration-300">
+                          <div className="flex flex-wrap gap-2 mt-2 animate-in fade-in duration-300">
                             {votersList.map((voter, vIdx) => {
                               const alreadyInRaid = activeRaid.participants?.some((p: any) => p.userId === voter.userId && p.ign === voter.ign);
                               return (
                                 <div 
                                   key={voter.userId + '-' + voter.ign + '-' + voter.job + '-' + vIdx}
-                                  className="inline-flex items-center space-x-2 bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl text-sm transition hover:border-slate-700 max-w-full"
+                                  className="flex flex-wrap items-center gap-1.5 bg-slate-950 border border-slate-800 px-2.5 py-1.5 rounded-xl text-xs transition hover:border-slate-700 max-w-full"
                                 >
-                                  <span className="text-base shrink-0 select-none">{emoji}</span>
+                                  <span className="text-sm shrink-0 select-none">{emoji}</span>
                                   
                                   {voter.discord && (
-                                    <span className="inline-flex items-center space-x-1 bg-[#5865F2]/10 border border-[#5865F2]/30 px-2 py-0.5 rounded-lg text-[10.5px] font-black text-indigo-300 shadow shrink-0 select-none">
-                                      <img src={voter.discord.avatar} className="w-4 h-4 rounded-full object-cover" />
-                                      <span className="max-w-[70px] truncate">@{voter.discord.username}</span>
+                                    <span className="inline-flex items-center space-x-1 bg-[#5865F2]/10 border border-[#5865F2]/30 px-1.5 py-0.5 rounded-md text-[10px] font-black text-indigo-300 shadow shrink-0 select-none max-w-[90px] truncate">
+                                      <img src={voter.discord.avatar} className="w-3.5 h-3.5 rounded-full object-cover shrink-0" />
+                                      <span className="truncate">@{voter.discord.username}</span>
                                     </span>
                                   )}
 
-                                  <span className="font-extrabold text-slate-100 whitespace-nowrap select-all" title={voter.ign}>{voter.ign}</span>
+                                  <span className="font-extrabold text-slate-100 max-w-[120px] truncate select-all" title={voter.ign}>
+                                    {voter.ign}
+                                  </span>
                                   
-                                  <span className="text-[11px] text-slate-400 font-bold shrink-0 flex items-center space-x-1 bg-slate-900 border border-slate-800/80 px-2 py-0.5 rounded-lg select-none">
-                                    <JobIcon jobName={voter.job} sizeClass="w-3.5 h-3.5" />
-                                    <span className="text-slate-205 font-extrabold text-slate-300">{voter.job || '無'}</span>
+                                  <span className="text-[10.5px] text-slate-400 font-bold shrink-0 flex items-center space-x-1 bg-slate-900 border border-slate-800/80 px-1.5 py-0.5 rounded-lg select-none">
+                                    <JobIcon jobName={voter.job} sizeClass="w-3 h-3" />
+                                    <span className="text-slate-300 font-extrabold">{voter.job || '無'}</span>
                                     <span className="text-slate-500">•</span>
                                     <span className="text-white font-mono font-bold">Lv.{voter.level || '?'}</span>
                                   </span>
@@ -1873,23 +1877,23 @@ export default function App() {
                                       onClick={() => {
                                         setVoterDetailModal({ isOpen: true, voter });
                                       }}
-                                      className="text-[10px] bg-slate-900 hover:bg-slate-850 hover:border-slate-700 border border-slate-800 px-2 py-1 rounded text-amber-300 transition shrink-0 font-bold"
+                                      className="text-[10px] bg-slate-900 hover:bg-slate-850 hover:border-slate-700 border border-slate-800 px-1.5 py-0.5 rounded text-amber-300 transition shrink-0 font-bold active:scale-95"
                                     >
-                                      <span>詳細</span>
+                                      詳細
                                     </button>
                                   )}
                                   
                                   {isCreator && (
-                                    <div className="flex items-center space-x-1.5 ml-2 border-l border-slate-800 pl-2 select-none">
+                                    <div className="flex items-center space-x-1 ml-1 border-l border-slate-800 pl-1.5 select-none shrink-0">
                                       {alreadyInRaid ? (
-                                        <span className="text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded text-xs shrink-0 select-none">
+                                        <span className="text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded text-[10px] shrink-0 select-none">
                                           已錄取
                                         </span>
                                       ) : (
                                         <button
                                           type="button"
                                           onClick={() => handleQuickEnroll(activeRaid.id, voter)}
-                                          className="bg-indigo-600 hover:bg-indigo-505 text-white font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
+                                          className="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-1.5 py-0.5 rounded text-[10px] transition active:scale-95 shrink-0"
                                         >
                                           ➕ 錄取
                                         </button>
@@ -1897,9 +1901,10 @@ export default function App() {
                                       <button
                                         type="button"
                                         onClick={() => handleRemoveVote(activeRaid.id, voter.userId, voter.ign, voter.job)}
-                                        className="bg-rose-955/65 hover:bg-rose-900 border border-rose-900/60 text-rose-300 font-black px-2 py-0.5 rounded text-xs transition active:scale-95 shrink-0"
+                                        className="bg-rose-950 hover:bg-rose-900 border border-rose-900/60 text-rose-300 font-black px-1.5 py-0.5 rounded text-[10px] transition active:scale-95 shrink-0"
+                                        title="剔除"
                                       >
-                                        🗑️ 剔除
+                                        🗑️
                                       </button>
                                     </div>
                                   )}
@@ -1913,50 +1918,52 @@ export default function App() {
                       return (
                         <div 
                           key={idx} 
-                          className={`p-5 rounded-2xl border transition-all duration-300 flex flex-col gap-4 ${isFinalized ? 'border-amber-400 bg-amber-500/15 ring-2 ring-amber-400/40' : 'bg-slate-950 border-slate-800'}`}
+                          className={`p-4 sm:p-5 rounded-2xl border transition-all duration-300 flex flex-col gap-3 sm:gap-4 ${isFinalized ? 'border-amber-400 bg-amber-500/15 ring-2 ring-amber-400/40' : 'bg-slate-950 border-slate-800'}`}
                         >
-                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                             <div className="flex-1 select-none">
-                              <div className="flex items-center space-x-2.5">
+                              <div className="flex items-center space-x-2">
                                 <span className="text-xs font-bold text-indigo-400 font-mono">時間候選區 #{idx + 1}</span>
                                 {isFinalized && (
-                                  <span className="bg-amber-405 bg-amber-400 text-slate-950 text-[10.5px] font-black px-2.5 py-0.5 rounded-lg shadow animate-pulse">
+                                  <span className="bg-amber-400 text-slate-950 text-[10.5px] font-black px-2 py-0.5 rounded-lg shadow animate-pulse">
                                     ★ 最終拍板出征時段
                                   </span>
                                 )}
                               </div>
-                              <h4 className="text-lg font-bold text-slate-205 text-slate-100 mt-0.5 font-mono">{formatDateTime(time)}</h4>
+                              <h4 className="text-base sm:text-lg font-bold text-slate-100 mt-0.5 font-mono break-all">{formatDateTime(time)}</h4>
                             </div>
 
-                            <div className="flex items-center space-x-2 select-none">
-                              <button
-                                type="button"
-                                onClick={() => handleVoteTime(activeRaid.id, idx, 'yes')}
-                                className={`px-4 py-2 rounded-xl text-sm font-bold transition flex items-center justify-center ${myChoice === 'yes' ? 'bg-emerald-600 text-white shadow shadow-emerald-500/25' : 'bg-slate-800 hover:bg-slate-750 text-slate-355 text-slate-300'}`}
-                              >
-                                🟢 可以
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleVoteTime(activeRaid.id, idx, 'maybe')}
-                                className={`px-4 py-2 rounded-xl text-sm font-bold transition flex items-center justify-center ${myChoice === 'maybe' ? 'bg-amber-600 text-white shadow shadow-amber-500/20' : 'bg-slate-800 hover:bg-slate-750 text-slate-355 text-slate-300'}`}
-                              >
-                                🟡 也許
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleVoteTime(activeRaid.id, idx, 'no')}
-                                className={`px-4 py-2 rounded-xl text-sm font-bold transition flex items-center justify-center ${myChoice === 'no' ? 'bg-rose-600 text-white shadow shadow-rose-500/20' : 'bg-slate-800 hover:bg-slate-750 text-slate-355 text-slate-300'}`}
-                              >
-                                🔴 不行
-                              </button>
+                            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 select-none w-full md:w-auto">
+                              <div className="grid grid-cols-3 gap-1.5 flex-1 md:flex-none">
+                                <button
+                                  type="button"
+                                  onClick={() => handleVoteTime(activeRaid.id, idx, 'yes')}
+                                  className={`py-2 px-2.5 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center ${myChoice === 'yes' ? 'bg-emerald-600 text-white shadow shadow-emerald-500/25' : 'bg-slate-800 hover:bg-slate-750 text-slate-300'}`}
+                                >
+                                  🟢 可以
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleVoteTime(activeRaid.id, idx, 'maybe')}
+                                  className={`py-2 px-2.5 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center ${myChoice === 'maybe' ? 'bg-amber-600 text-white shadow shadow-amber-500/20' : 'bg-slate-800 hover:bg-slate-750 text-slate-300'}`}
+                                >
+                                  🟡 也許
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleVoteTime(activeRaid.id, idx, 'no')}
+                                  className={`py-2 px-2.5 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center ${myChoice === 'no' ? 'bg-rose-600 text-white shadow shadow-rose-500/20' : 'bg-slate-800 hover:bg-slate-750 text-slate-300'}`}
+                                >
+                                  🔴 不行
+                                </button>
+                              </div>
 
                               {isCreator && (
-                                <div className="flex items-center space-x-1 ml-2 font-black">
+                                <div className="flex items-center gap-1.5 font-black w-full md:w-auto mt-1 md:mt-0">
                                   <button
                                     type="button"
                                     onClick={() => handleFinalizeTime(activeRaid.id, idx)}
-                                    className={`px-3.5 py-2 rounded-xl text-xs transition ${isFinalized ? 'bg-slate-900 border border-amber-500/40 text-amber-400' : 'bg-amber-400 text-slate-950 hover:bg-amber-300'}`}
+                                    className={`flex-1 md:flex-none px-3 py-2 rounded-xl text-xs transition ${isFinalized ? 'bg-slate-900 border border-amber-500/40 text-amber-400' : 'bg-amber-400 text-slate-950 hover:bg-amber-300'}`}
                                   >
                                     {isFinalized ? '❌ 取消確定' : '🎯 確定此時間'}
                                   </button>
@@ -1965,7 +1972,7 @@ export default function App() {
                                     <button
                                       type="button"
                                       onClick={() => sendDiscordRaidWebhook(activeRaid, 'finalize_time', { timeIndex: idx })}
-                                      className="bg-[#5865F2] hover:bg-[#4752C4] text-white px-3.5 py-2 rounded-xl text-xs flex items-center space-x-1 transition"
+                                      className="bg-[#5865F2] hover:bg-[#4752C4] text-white px-3 py-2 rounded-xl text-xs flex items-center justify-center space-x-1 transition"
                                       title="發送出團時間至 Discord"
                                     >
                                       <span>📢 廣播時間</span>
@@ -1979,19 +1986,19 @@ export default function App() {
                           <div className="border-t border-slate-800/80 pt-3 space-y-2 font-mono">
                             {yesVotes.length > 0 && (
                               <div>
-                                <span className="text-xs text-emerald-450 text-emerald-400 font-bold block mb-1">🟢 可以配合的隊員：</span>
+                                <span className="text-xs text-emerald-400 font-bold block mb-1">🟢 可以配合的隊員：</span>
                                 {renderVoterBadges(yesVotes, '🟢')}
                               </div>
                             )}
                             {maybeVotes.length > 0 && (
                               <div>
-                                <span className="text-xs text-amber-450 text-amber-400 font-bold block mb-1">🟡 可能出戰的隊員：</span>
+                                <span className="text-xs text-amber-400 font-bold block mb-1">🟡 可能出戰的隊員：</span>
                                 {renderVoterBadges(maybeVotes, '🟡')}
                               </div>
                             )}
                             {noVotes.length > 0 && (
                               <div>
-                                <span className="text-xs text-rose-455 text-rose-400 font-bold block mb-1">🔴 無法配合的隊員：</span>
+                                <span className="text-xs text-rose-400 font-bold block mb-1">🔴 無法配合的隊員：</span>
                                 {renderVoterBadges(noVotes, '🔴')}
                               </div>
                             )}
