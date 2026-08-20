@@ -31,6 +31,25 @@ export interface Profile {
   discord: DiscordUser | null;
 }
 
+export interface AnnouncementItem {
+  id: string;
+  title: string;
+  category: 'maintenance' | 'update' | 'event' | 'security';
+  date: string;
+  timeRange?: string;
+  isLatest?: boolean;
+  isImportant?: boolean;
+  summary: string;
+  highlights: {
+    icon: string;
+    label: string;
+    content: string;
+  }[];
+  details: string[];
+  sourceUrl?: string;
+  author?: string;
+}
+
 export interface Participant {
   userId: string;
   ign: string;

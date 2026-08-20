@@ -30,9 +30,8 @@ import { ProfileModal, BossManagerModal, JobManagerModal, VoterDetailModal } fro
 import { AdminConsoleModal } from './components/AdminConsole';
 import SynergyAnalyzer from './components/SynergyAnalyzer';
 import FortuneDashboard from './components/FortuneDashboard';
-import EquipScrollSimulator from './components/EquipScrollSimulator';
-import StatCalculator from './components/StatCalculator';
 import DiscordThreadModal from './components/DiscordThreadModal';
+import { PWAInstallModal } from './components/PWAInstallModal';
 
 // Helper to format date times beautifully
 const formatDateTime = (dateTimeStr: string) => {
@@ -85,7 +84,7 @@ export default function App() {
   const [raids, setRaids] = useState<any[]>([]);
   const [fortunes, setFortunes] = useState<any[]>([]);
   const [currentRaidId, setCurrentRaidId] = useState<string | null>(null);
-  const [lobbyTab, setLobbyTab] = useState<'recruitment' | 'simulator' | 'gacha' | 'calculator'>('recruitment');
+  const [lobbyTab, setLobbyTab] = useState<'recruitment' | 'gacha'>('recruitment');
 
   const [profile, setProfile] = useState<Profile>({
     activeCharacterIndex: 0,
@@ -137,6 +136,7 @@ export default function App() {
 
   // Issue Report State
   const [showIssueReportModal, setShowIssueReportModal] = useState(false);
+  const [showPWAModal, setShowPWAModal] = useState(false);
   const [issueTitle, setIssueTitle] = useState('');
   const [issueDescription, setIssueDescription] = useState('');
   const [issueSeverity, setIssueSeverity] = useState<'blocker' | 'bug' | 'suggestion'>('bug');
@@ -1198,6 +1198,16 @@ export default function App() {
               </div>
 
               <button
+                type="button"
+                onClick={() => setShowPWAModal(true)}
+                className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 hover:from-amber-500/20 hover:to-orange-500/20 border border-amber-500/30 hover:border-amber-500/60 rounded-xl px-3 py-1.5 flex items-center transition text-xs shadow-md h-10 select-none text-amber-300 font-extrabold cursor-pointer space-x-1.5"
+                title="將 NyxShade 安裝為手機/電腦獨立應用程式 (PWA)"
+              >
+                <span>📲</span>
+                <span className="hidden sm:inline">安裝 App</span>
+              </button>
+
+              <button
                 onClick={() => setShowIssueReportModal(true)}
                 className="bg-slate-900/80 hover:bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-rose-900/50 rounded-xl px-3 py-1.5 flex items-center transition text-xs shadow-md h-10 select-none text-rose-305 text-rose-400 font-extrabold cursor-pointer"
                 title="遇到網頁故障或有功能點子？點此立即透過 Discord 轉傳管道回報！"
@@ -1322,34 +1332,20 @@ export default function App() {
               </div>
 
               {/* Lobby Tabs Picker */}
-              <div className="flex flex-wrap md:flex-nowrap bg-slate-900 border border-slate-800 p-1.5 rounded-2xl mb-8 max-w-2xl select-none gap-1">
+              <div className="flex flex-wrap sm:flex-nowrap bg-slate-900 border border-slate-800 p-1.5 rounded-2xl mb-8 max-w-md select-none gap-1">
                 <button
                   type="button"
                   onClick={() => setLobbyTab('recruitment')}
-                  className={`flex-1 min-w-[120px] py-2.5 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${lobbyTab === 'recruitment' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-slate-200'}`}
+                  className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${lobbyTab === 'recruitment' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-slate-200'}`}
                 >
                   <span>📢 遠征招募大廳</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setLobbyTab('simulator')}
-                  className={`flex-1 min-w-[120px] py-2.5 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${lobbyTab === 'simulator' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-slate-200'}`}
-                >
-                  <span>🔨 衝裝模擬器</span>
-                </button>
-                <button
-                  type="button"
                   onClick={() => setLobbyTab('gacha')}
-                  className={`flex-1 min-w-[120px] py-2.5 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${lobbyTab === 'gacha' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-slate-200'}`}
+                  className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${lobbyTab === 'gacha' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-slate-200'}`}
                 >
                   <span>🔮 幸運神社</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLobbyTab('calculator')}
-                  className={`flex-1 min-w-[120px] py-2.5 rounded-xl text-xs font-black transition flex items-center justify-center space-x-1.5 ${lobbyTab === 'calculator' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow font-black' : 'text-slate-400 hover:text-slate-200'}`}
-                >
-                  <span>📊 屬性計算器</span>
                 </button>
               </div>
 
@@ -1498,10 +1494,6 @@ export default function App() {
                 </>
               )}
 
-              {lobbyTab === 'simulator' && (
-                <EquipScrollSimulator showToast={showToast} />
-              )}
-
               {lobbyTab === 'gacha' && (
                 <GachaSection 
                   activeCharacter={activeCharacter}
@@ -1513,10 +1505,6 @@ export default function App() {
                   fortunesList={fortunes}
                   customUid={customUid}
                 />
-              )}
-
-              {lobbyTab === 'calculator' && (
-                <StatCalculator />
               )}
             </div>
           ) : (
@@ -2862,6 +2850,13 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* PWA Install Guide Modal */}
+      <PWAInstallModal
+        isOpen={showPWAModal}
+        onClose={() => setShowPWAModal(false)}
+        showToast={showToast}
+      />
 
     </div>
   );
