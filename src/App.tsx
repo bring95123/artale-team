@@ -33,6 +33,7 @@ import FortuneDashboard from './components/FortuneDashboard';
 import DiscordThreadModal from './components/DiscordThreadModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { DropTableSection } from './components/DropTableSection';
+import { MobileNavDrawer } from './components/MobileNavDrawer';
 
 // Helper to format date times beautifully
 const formatDateTime = (dateTimeStr: string) => {
@@ -123,6 +124,7 @@ export default function App() {
   const [profileLoaded, setProfileLoaded] = useState(false);
 
   // Modal Control States
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showBossManagerModal, setShowBossManagerModal] = useState(false);
   const [showJobManagerModal, setShowJobManagerModal] = useState(false);
@@ -1216,8 +1218,22 @@ export default function App() {
               </div>
             </div>
 
-            {/* Profile quick swap bar */}
+            {/* Profile quick swap bar & Mobile Menu Trigger */}
             <div className="flex items-center space-x-1.5 sm:space-x-2.5 shrink-0">
+              {/* Mobile Drawer Trigger Button */}
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="md:hidden bg-gradient-to-r from-amber-500/15 to-orange-500/15 hover:from-amber-500/25 hover:to-orange-500/25 border border-amber-500/40 text-amber-300 rounded-xl px-2.5 py-1.5 flex items-center transition text-xs shadow-md h-9 sm:h-10 select-none font-black space-x-1.5 cursor-pointer active:scale-95"
+                title="開啟行動版展開選單"
+              >
+                <span className="text-base leading-none font-mono">☰</span>
+                <span className="text-[11px] font-bold">選單</span>
+                {myScheduleRaids.length > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                )}
+              </button>
+
               <div className="hidden md:block">
                 {dbStatus === 'connecting' && <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-lg text-[11px] font-bold animate-pulse">⏳ 連線中</span>}
                 {dbStatus === 'connected' && <span className="bg-emerald-500/10 text-emerald-450 border border-emerald-500/20 px-2.5 py-1 rounded-lg text-[11px] font-bold">🟢 連線成功</span>}
@@ -1231,7 +1247,7 @@ export default function App() {
                   setTheme(nextTheme);
                   showToast(`已切換為【${nextTheme === 'dark' ? '🌙 暗色模式' : '☀️ 淺色模式'}】`);
                 }}
-                className="bg-slate-900/80 hover:bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/50 rounded-xl px-2 sm:px-2.5 py-1.5 flex items-center transition text-xs shadow-md h-9 sm:h-10 select-none text-amber-400 font-extrabold cursor-pointer space-x-1 shrink-0"
+                className="hidden sm:flex bg-slate-900/80 hover:bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/50 rounded-xl px-2 sm:px-2.5 py-1.5 items-center transition text-xs shadow-md h-9 sm:h-10 select-none text-amber-400 font-extrabold cursor-pointer space-x-1 shrink-0"
                 title={`點擊切換為${theme === 'dark' ? '淺色模式 (Light Mode)' : '暗色模式 (Dark Mode)'}`}
               >
                 <span className="text-sm">{theme === 'dark' ? '🌙' : '☀️'}</span>
@@ -1241,7 +1257,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setShowPWAModal(true)}
-                className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 hover:from-amber-500/20 hover:to-orange-500/20 border border-amber-500/30 hover:border-amber-500/60 rounded-xl px-2 sm:px-3 py-1.5 flex items-center transition text-xs shadow-md h-9 sm:h-10 select-none text-amber-300 font-extrabold cursor-pointer space-x-1 shrink-0"
+                className="hidden sm:flex bg-gradient-to-r from-amber-500/10 to-orange-500/10 hover:from-amber-500/20 hover:to-orange-500/20 border border-amber-500/30 hover:border-amber-500/60 rounded-xl px-2 sm:px-3 py-1.5 items-center transition text-xs shadow-md h-9 sm:h-10 select-none text-amber-300 font-extrabold cursor-pointer space-x-1 shrink-0"
                 title="將 NyxShade 安裝為手機/電腦獨立應用程式 (PWA)"
               >
                 <span>📲</span>
@@ -1250,7 +1266,7 @@ export default function App() {
 
               <button
                 onClick={() => setShowIssueReportModal(true)}
-                className="bg-slate-900/80 hover:bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-rose-900/50 rounded-xl px-2 sm:px-3 py-1.5 flex items-center transition text-xs shadow-md h-9 sm:h-10 select-none text-rose-400 font-extrabold cursor-pointer shrink-0"
+                className="hidden sm:flex bg-slate-900/80 hover:bg-slate-850 hover:bg-slate-800 border border-slate-800 hover:border-rose-900/50 rounded-xl px-2 sm:px-3 py-1.5 items-center transition text-xs shadow-md h-9 sm:h-10 select-none text-rose-400 font-extrabold cursor-pointer shrink-0"
                 title="遇到網頁故障或有功能點子？點此立即透過 Discord 轉傳管道回報！"
               >
                 <span>🐛</span>
@@ -1310,6 +1326,41 @@ export default function App() {
             </div>
           </div>
         </header>
+
+        {/* Mobile Slide-out Navigation Drawer */}
+        <MobileNavDrawer
+          isOpen={isMobileMenuOpen}
+          onClose={() => setIsMobileMenuOpen(false)}
+          profile={profile}
+          activeCharacter={activeCharacter}
+          discordUser={discordUser}
+          lobbyTab={lobbyTab}
+          setLobbyTab={setLobbyTab}
+          raids={raids}
+          myScheduleRaids={myScheduleRaids}
+          bosses={bosses}
+          currentRaidId={currentRaidId}
+          setCurrentRaidId={setCurrentRaidId}
+          isAdminLoggedIn={isAdminLoggedIn}
+          setIsCreating={setIsCreating}
+          setShowProfileModal={setShowProfileModal}
+          setShowBossManagerModal={setShowBossManagerModal}
+          setShowJobManagerModal={setShowJobManagerModal}
+          setShowPWAModal={setShowPWAModal}
+          setShowIssueReportModal={setShowIssueReportModal}
+          theme={theme}
+          setTheme={setTheme}
+          dbStatus={dbStatus}
+          onSwitchCharacter={(nextIdx) => {
+            setProfile({ ...profile, activeCharacterIndex: nextIdx });
+            const profileRef = doc(db, `artifacts/${appId}/users/${customUid}/profile/info`);
+            updateDoc(profileRef, { activeCharacterIndex: nextIdx });
+            const publicRef = doc(db, `artifacts/${appId}/public/data/registered_users/${customUid}`);
+            updateDoc(publicRef, { activeCharacterIndex: nextIdx });
+            showToast(`已快速切換出團角色為：【${profile.characters[nextIdx].ign} (${profile.characters[nextIdx].job})】`);
+          }}
+          onOpenAdminSecret={handleSecretClick}
+        />
 
         {/* Core panel list */}
         <main className="max-w-6xl mx-auto p-4 md:p-6 pb-20">
