@@ -4,6 +4,7 @@ import { createServer as createViteServer } from "vite";
 import multer from "multer";
 import fs from "fs";
 import { verifyKey } from "discord-interactions";
+import { WebSocket } from "ws";
 
 async function startServer() {
   const app = express();
@@ -462,16 +463,227 @@ async function startServer() {
     }
   };
 
+  interface GatewayClient {
+    ws: WebSocket | null;
+    heartbeatInterval: NodeJS.Timeout | null;
+    botId: string | null;
+    token: string;
+  }
+
+  const activeGatewayClients = new Map<string, GatewayClient>();
+
+  const startDiscordGatewayClient = (token: string) => {
+    const cleanToken = token.trim().replace(/^Bot\s+/i, '');
+    if (activeGatewayClients.has(cleanToken)) return;
+
+    console.log(`[Discord Gateway] Initializing gateway connection for token: ...${cleanToken.slice(-6)}`);
+    let ws: WebSocket | null = new WebSocket("wss://gateway.discord.gg/?v=10&encoding=json");
+    let heartbeatInterval: NodeJS.Timeout | null = null;
+    let botId: string | null = null;
+    let lastSequence: number | null = null;
+
+    const clientObj: GatewayClient = {
+      ws,
+      heartbeatInterval,
+      botId,
+      token: cleanToken
+    };
+    activeGatewayClients.set(cleanToken, clientObj);
+
+    ws.on("open", () => {
+      console.log(`[Discord Gateway] Connection opened for ...${cleanToken.slice(-6)}`);
+    });
+
+    ws.on("message", async (data) => {
+      try {
+        const payload = JSON.parse(data.toString());
+        const { op, d, s, t } = payload;
+        if (s !== undefined) lastSequence = s;
+
+        if (op === 10) {
+          // Hello Payload - Start Heartbeat and Identify
+          const heartbeatMs = d.heartbeat_interval;
+          heartbeatInterval = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ op: 1, d: lastSequence }));
+            }
+          }, heartbeatMs);
+          clientObj.heartbeatInterval = heartbeatInterval;
+
+          // Identify
+          const identifyPayload = {
+            op: 2,
+            d: {
+              token: cleanToken,
+              intents: 33281, // GUILDS (1), GUILD_MESSAGES (512), MESSAGE_CONTENT (32768)
+              properties: {
+                os: "linux",
+                browser: "chrome",
+                device: "chrome"
+              }
+            }
+          };
+          ws.send(JSON.stringify(identifyPayload));
+        }
+
+        if (op === 0) {
+          // Event received
+          if (t === "READY") {
+            botId = d.user.id;
+            clientObj.botId = botId;
+            console.log(`[Discord Gateway] Bot logged in as: ${d.user.username}#${d.user.discriminator} (${botId})`);
+          }
+
+          if (t === "MESSAGE_CREATE") {
+            const { content, channel_id, author, id: messageId } = d;
+            if (content && content.trim() === "!clearbot") {
+              console.log(`[Discord Gateway] Received !clearbot command in channel ${channel_id} from ${author.username}`);
+
+              const targetBotId = botId;
+              if (!targetBotId) return;
+
+              try {
+                // 1. Fetch channel messages (up to 100)
+                const fetchUrl = `https://discord.com/api/v10/channels/${channel_id}/messages?limit=100`;
+                const response = await fetch(fetchUrl, {
+                  headers: {
+                    Authorization: `Bot ${cleanToken}`
+                  }
+                });
+
+                if (response.ok) {
+                  const messages = (await response.json()) as any;
+                  if (Array.isArray(messages)) {
+                    // Filter messages sent by this bot
+                    const botMessages = messages.filter((m: any) => m.author?.id === targetBotId);
+                    console.log(`[Discord Gateway] Found ${botMessages.length} messages from this bot in channel ${channel_id}. Deleting...`);
+
+                    let deletedCount = 0;
+                    for (const msg of botMessages) {
+                      const deleteUrl = `https://discord.com/api/v10/channels/${channel_id}/messages/${msg.id}`;
+                      const delRes = await fetch(deleteUrl, {
+                        method: "DELETE",
+                        headers: {
+                          Authorization: `Bot ${cleanToken}`
+                        }
+                      });
+                      if (delRes.ok) {
+                        deletedCount++;
+                      }
+                      await new Promise(r => setTimeout(r, 200));
+                    }
+
+                    // Delete "!clearbot" command message
+                    await fetch(`https://discord.com/api/v10/channels/${channel_id}/messages/${messageId}`, {
+                      method: "DELETE",
+                      headers: {
+                        Authorization: `Bot ${cleanToken}`
+                      }
+                    }).catch(() => {});
+
+                    // Send temporary feedback
+                    const feedbackRes = await fetch(`https://discord.com/api/v10/channels/${channel_id}/messages`, {
+                      method: "POST",
+                      headers: {
+                        Authorization: `Bot ${cleanToken}`,
+                        "Content-Type": "application/json"
+                      },
+                      body: JSON.stringify({
+                        content: `🧹 **已成功為您清除此頻道中由本機器人發送的 ${deletedCount} 則舊訊息！**\n*(⏱️ 本通知將於 10 秒後自動刪除)*`
+                      })
+                    });
+
+                    if (feedbackRes.ok) {
+                      const feedbackMsg = (await feedbackRes.json()) as any;
+                      setTimeout(() => {
+                        fetch(`https://discord.com/api/v10/channels/${channel_id}/messages/${feedbackMsg.id}`, {
+                          method: "DELETE",
+                          headers: {
+                            Authorization: `Bot ${cleanToken}`
+                        }
+                      }).catch(() => {});
+                    }, 10000);
+                  }
+                }
+              } else {
+                console.warn(`[Discord Gateway] Failed to fetch channel messages: ${response.statusText}`);
+              }
+            } catch (err) {
+              console.error(`[Discord Gateway] Error executing !clearbot:`, err);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[Discord Gateway] Error parsing WebSocket message:", err);
+    }
+  });
+
+  ws.on("error", (err) => {
+    console.error(`[Discord Gateway] WebSocket error for token ...${cleanToken.slice(-6)}:`, err);
+  });
+
+  ws.on("close", (code, reason) => {
+    console.log(`[Discord Gateway] Connection closed for ...${cleanToken.slice(-6)} (Code: ${code}, Reason: ${reason})`);
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    activeGatewayClients.delete(cleanToken);
+
+    // Auto reconnect after 5 seconds if the token is still active
+    setTimeout(() => {
+      const activeTokens = new Set(Object.values(raidStatusStore).map((info: any) => info.botToken).filter(Boolean));
+      if (activeTokens.has(cleanToken)) {
+        console.log(`[Discord Gateway] Reconnecting gateway for ...${cleanToken.slice(-6)}`);
+        startDiscordGatewayClient(cleanToken);
+      }
+    }, 5000);
+  });
+};
+
+  const syncDiscordGatewayClients = () => {
+    const activeTokens = new Set<string>();
+    for (const info of Object.values(raidStatusStore)) {
+      if (info && typeof info === "object" && (info as any).botToken) {
+        activeTokens.add(((info as any).botToken as string).trim().replace(/^Bot\s+/i, ''));
+      }
+    }
+
+    // Stop client for tokens no longer active
+    for (const [token, client] of activeGatewayClients.entries()) {
+      if (!activeTokens.has(token)) {
+        console.log(`[Discord Gateway] Discontinuing gateway for decommissioned token: ...${token.slice(-6)}`);
+        if (client.heartbeatInterval) clearInterval(client.heartbeatInterval);
+        if (client.ws) {
+          client.ws.terminate();
+        }
+        activeGatewayClients.delete(token);
+      }
+    }
+
+    // Start client for new active tokens
+    for (const token of activeTokens) {
+      if (!activeGatewayClients.has(token)) {
+        startDiscordGatewayClient(token);
+      }
+    }
+  };
+
   const saveRaidStatuses = () => {
     try {
       fs.writeFileSync(raidStatusesFilePath, JSON.stringify(raidStatusStore, null, 2), "utf-8");
+      syncDiscordGatewayClients();
     } catch (err) {
       console.error("Failed to save raid_statuses.json", err);
     }
   };
 
+  // Sync Discord Gateway connections immediately on server boot
+  syncDiscordGatewayClients();
+
+  // Store previous data fingerprint per raidId to avoid sending redundant Discord API updates when data hasn't changed
+  const lastSentCardFingerprintMap: Record<string, string> = {};
+
   // Helper to live update public Discord Card message embed
-  const updateDiscordCardMessage = async (raidId: string) => {
+  const updateDiscordCardMessage = async (raidId: string, forceUpdate = false) => {
     const raidInfo = raidStatusStore[raidId];
     if (!raidInfo || !raidInfo.botToken || !raidInfo.channelId || !raidInfo.messageId) {
       return;
@@ -518,6 +730,26 @@ async function startServer() {
       const party3 = raidInfo.party3 || [];
       const reserves = raidInfo.reserves || [];
       const partyCount = raidInfo.partyCount || 1;
+
+      // Data Compare fingerprint - if data hasn't changed since last send, skip Discord API call
+      const dataFingerprint = JSON.stringify({
+        title: raidInfo.title || '',
+        bossName: raidInfo.bossName || '',
+        leaderName: raidInfo.leaderName || '',
+        targetCount: raidInfo.targetCount || 12,
+        customNote: raidInfo.customNote || '',
+        partyCount,
+        yesVotes,
+        party1,
+        party2,
+        party3,
+        reserves
+      });
+
+      if (!forceUpdate && lastSentCardFingerprintMap[raidId] === dataFingerprint) {
+        // Data is identical, skip sending API request to save rate limits
+        return;
+      }
 
       const yesListText = Array.isArray(yesVotes) && yesVotes.length > 0
         ? yesVotes.map((v: any) => `• **${v.ign}** (${v.job || '未知'} Lv.${v.level || '?'}) ${v.discordId ? `<@${v.discordId}>` : ''}`).join('\n')
@@ -604,6 +836,7 @@ async function startServer() {
         const errorText = await patchResponse.text();
         console.warn(`[updateDiscordCardMessage] Discord API returned ${patchResponse.status}: ${errorText}`);
       } else {
+        lastSentCardFingerprintMap[raidId] = dataFingerprint;
         console.log(`[updateDiscordCardMessage] Successfully updated Discord Card message ${raidInfo.messageId} for raid ${raidId}`);
       }
     } catch (err) {
@@ -997,7 +1230,9 @@ async function startServer() {
                       type: 3, // String Select Menu
                       custom_id: `select_char_${raidId}`,
                       placeholder: "🎮 點擊選擇出團角色卡 (可多選報名)...",
-                      options
+                      options,
+                      min_values: 1,
+                      max_values: Math.min(options.length, 25)
                     }
                   ]
                 }
@@ -1031,15 +1266,14 @@ async function startServer() {
         });
       }
 
-      // 2. Select: Character Card chosen from Select Menu
+      // 2. Select: Character Card chosen from Select Menu (Supports Multi-Select)
       if (customId.startsWith("select_char_")) {
         const raidId = customId.replace("select_char_", "");
-        const selectedValue = interaction.data?.values?.[0] || "";
+        const selectedValues: string[] = interaction.data?.values || [];
         const raidInfo = raidStatusStore[raidId];
-        const bossTitle = raidInfo?.bossName || raidInfo?.title || "遠征隊";
         const webUrl = raidInfo?.appUrl || (req.headers.origin as string) || (req.get('host') ? `https://${req.get('host')}` : 'https://ais-dev-4ngurwkxlrhrrzz5pek4mo-482405179645.asia-east1.run.app');
 
-        if (selectedValue === "open_web_register") {
+        if (selectedValues.includes("open_web_register") && selectedValues.length === 1) {
           return respondAndAutoDelete({
             type: 7, // UPDATE_MESSAGE
             data: {
@@ -1062,86 +1296,82 @@ async function startServer() {
           });
         }
 
-        if (selectedValue.startsWith("char_")) {
-          const charIndex = parseInt(selectedValue.replace("char_", ""), 10);
+        const charValues = selectedValues.filter(v => v.startsWith("char_"));
+        if (charValues.length > 0) {
           const userProfile = userCharactersStore[discordId];
-          const selectedChar = userProfile?.characters?.[charIndex];
+          const registeredChars: any[] = [];
 
-          if (!selectedChar) {
-            return respondAndAutoDelete({
-              type: 7,
-              data: {
-                content: "⚠️ 找不到該角色卡，可能已被刪除或更新。請重新點擊報名按鈕！\n\n*(⏱️ 此訊息將於 1 分鐘後自動隱藏/消失)*",
-                components: []
-              }
-            });
-          }
-
-          // Record signup in store (keyed by ign / discordId + ign to allow multiple character registrations)
           if (!discordSignupsStore[raidId]) {
             discordSignupsStore[raidId] = [];
           }
 
-          const signupRecord = {
-            discordId,
-            username,
-            avatar,
-            ign: selectedChar.ign,
-            job: selectedChar.job,
-            level: selectedChar.level || 120,
-            memo: selectedChar.memo || "",
-            vote: "yes",
-            votes: { 0: "yes", interest: "yes" },
-            signedUpAt: new Date().toISOString()
-          };
+          for (const val of charValues) {
+            const charIndex = parseInt(val.replace("char_", ""), 10);
+            const selectedChar = userProfile?.characters?.[charIndex];
+            if (!selectedChar) continue;
 
-          const existingIdx = discordSignupsStore[raidId].findIndex(s => 
-            s.ign?.trim().toLowerCase() === selectedChar.ign?.trim().toLowerCase() || (s.discordId === discordId && s.ign === selectedChar.ign)
-          );
-          if (existingIdx >= 0) {
-            discordSignupsStore[raidId][existingIdx] = signupRecord;
-          } else {
-            discordSignupsStore[raidId].push(signupRecord);
-          }
-
-          // Update raidStatusStore yesVotes
-          if (raidStatusStore[raidId]) {
-            const currentYes = raidStatusStore[raidId].yesVotes || [];
-            const vIdx = currentYes.findIndex((v: any) => 
-              v.ign?.trim().toLowerCase() === selectedChar.ign?.trim().toLowerCase() || (v.discordId === discordId && v.ign === selectedChar.ign)
-            );
-            const voterObj = {
-              userId: `dc_${discordId}_${selectedChar.ign}`,
+            const signupRecord = {
               discordId,
+              username,
+              avatar,
               ign: selectedChar.ign,
               job: selectedChar.job,
               level: selectedChar.level || 120,
               memo: selectedChar.memo || "",
               vote: "yes",
               votes: { 0: "yes", interest: "yes" },
-              discord: { id: discordId, username, avatar }
+              signedUpAt: new Date().toISOString()
             };
-            if (vIdx >= 0) {
-              currentYes[vIdx] = voterObj;
-            } else {
-              currentYes.push(voterObj);
-            }
-            raidStatusStore[raidId].yesVotes = currentYes;
-            // Remove from noVotes if present for this character
-            raidStatusStore[raidId].noVotes = (raidStatusStore[raidId].noVotes || []).filter((v: any) => 
-              !(v.ign?.trim().toLowerCase() === selectedChar.ign?.trim().toLowerCase())
+
+            const existingIdx = discordSignupsStore[raidId].findIndex(s => 
+              s.ign?.trim().toLowerCase() === selectedChar.ign?.trim().toLowerCase() || (s.discordId === discordId && s.ign === selectedChar.ign)
             );
-            saveRaidStatuses();
-            updateDiscordCardMessage(raidId).catch(() => {});
+            if (existingIdx >= 0) {
+              discordSignupsStore[raidId][existingIdx] = signupRecord;
+            } else {
+              discordSignupsStore[raidId].push(signupRecord);
+            }
+
+            // Update raidStatusStore yesVotes
+            if (raidStatusStore[raidId]) {
+              const currentYes = raidStatusStore[raidId].yesVotes || [];
+              const vIdx = currentYes.findIndex((v: any) => 
+                v.ign?.trim().toLowerCase() === selectedChar.ign?.trim().toLowerCase() || (v.discordId === discordId && v.ign === selectedChar.ign)
+              );
+              const voterObj = {
+                userId: `dc_${discordId}_${selectedChar.ign}`,
+                discordId,
+                ign: selectedChar.ign,
+                job: selectedChar.job,
+                level: selectedChar.level || 120,
+                memo: selectedChar.memo || "",
+                vote: "yes",
+                votes: { 0: "yes", interest: "yes" },
+                discord: { id: discordId, username, avatar }
+              };
+              if (vIdx >= 0) {
+                currentYes[vIdx] = voterObj;
+              } else {
+                currentYes.push(voterObj);
+              }
+              raidStatusStore[raidId].yesVotes = currentYes;
+              raidStatusStore[raidId].noVotes = (raidStatusStore[raidId].noVotes || []).filter((v: any) => 
+                !(v.ign?.trim().toLowerCase() === selectedChar.ign?.trim().toLowerCase())
+              );
+            }
+            registeredChars.push(selectedChar);
           }
 
-          // Get updated signups for this user
+          saveRaidStatuses();
+          updateDiscordCardMessage(raidId).catch(() => {});
+
           const allUserSignups = discordSignupsStore[raidId].filter(s => s.discordId === discordId);
+          const charListText = registeredChars.map(c => `• 🗡️ **【${c.ign}】** (${c.job} Lv.${c.level || 120})`).join('\n');
 
           return respondAndAutoDelete({
             type: 7, // UPDATE_MESSAGE
             data: {
-              content: `🎉 **角色卡報名成功！**\n\n已成功為您登記出團角色卡：\n🗡️ **【${selectedChar.ign}】** (${selectedChar.job} Lv.${selectedChar.level || 120})\n🤖 **Discord 帳號**: <@${discordId}>\n\n🟢 **出團意願已登記為「可以配合」！** (已即時同步更新至頻道卡片與網站)\n*(目前您已以此帳號報名 ${allUserSignups.length} 隻角色：${allUserSignups.map(s => s.ign).join(', ')})\n\n💡 提示：若需再加報其他角色，可再次點擊「🙋 快速報名 / 選擇角色卡」選擇其他卡片！\n\n*(⏱️ 此訊息將於 1 分鐘後自動隱藏/消失)*`,
+              content: `🎉 **角色卡報名成功！**\n\n已成功為您登記 **${registeredChars.length}** 隻出團角色卡：\n${charListText}\n🤖 **Discord 帳號**: <@${discordId}>\n\n🟢 **出團意願已登記為「可以配合」！** (已即時同步更新至頻道卡片與網站)\n*(目前您已以此帳號在該遠征隊報名 ${allUserSignups.length} 隻角色：${allUserSignups.map(s => s.ign).join(', ')})\n\n💡 提示：可隨時點擊「🙋 快速報名 / 選擇角色卡」多選勾選更多角色，或點擊「❌ 取消報名」批次取消報名！\n\n*(⏱️ 此訊息將於 1 分鐘後自動隱藏/消失)*`,
               components: []
             }
           });
@@ -1326,8 +1556,10 @@ async function startServer() {
                   {
                     type: 3,
                     custom_id: `select_cancel_char_${raidId}`,
-                    placeholder: "🎯 選擇要取消報名的角色卡...",
-                    options: cancelOptions
+                    placeholder: "🎯 選擇要取消報名的角色卡 (可多選)...",
+                    options: cancelOptions,
+                    min_values: 1,
+                    max_values: Math.min(cancelOptions.length, 25)
                   }
                 ]
               }
@@ -1336,12 +1568,12 @@ async function startServer() {
         });
       }
 
-      // Handle selection from cancel menu
+      // Handle selection from cancel menu (Supports Multi-Select)
       if (customId.startsWith("select_cancel_char_")) {
         const raidId = customId.replace("select_cancel_char_", "");
-        const selectedValue = interaction.data?.values?.[0] || "";
+        const selectedValues: string[] = interaction.data?.values || [];
 
-        if (selectedValue === "cancel_all_chars") {
+        if (selectedValues.includes("cancel_all_chars")) {
           const removed = (discordSignupsStore[raidId] || []).filter(s => s.discordId === discordId);
           discordSignupsStore[raidId] = (discordSignupsStore[raidId] || []).filter(s => s.discordId !== discordId);
 
@@ -1384,41 +1616,52 @@ async function startServer() {
           });
         }
 
-        if (selectedValue.startsWith("cancel_char_")) {
-          // Format: cancel_char_${idx}_${ign}
-          const targetIgn = selectedValue.split("_").slice(3).join("_");
-          const targetIgnKey = targetIgn?.trim().toLowerCase();
+        const cancelValues = selectedValues.filter(v => v.startsWith("cancel_char_"));
+        if (cancelValues.length > 0) {
+          const canceledIgns: string[] = [];
 
-          discordSignupsStore[raidId] = (discordSignupsStore[raidId] || []).filter(
-            s => !(s.ign?.trim().toLowerCase() === targetIgnKey)
-          );
+          for (const val of cancelValues) {
+            // Format: cancel_char_${idx}_${ign}
+            const targetIgn = val.split("_").slice(3).join("_");
+            const targetIgnKey = targetIgn?.trim().toLowerCase();
+            if (!targetIgnKey) continue;
+
+            canceledIgns.push(targetIgn);
+
+            discordSignupsStore[raidId] = (discordSignupsStore[raidId] || []).filter(
+              s => !(s.ign?.trim().toLowerCase() === targetIgnKey)
+            );
+
+            if (raidStatusStore[raidId]) {
+              const targetChar = (raidStatusStore[raidId].yesVotes || []).find(
+                (v: any) => v.ign?.trim().toLowerCase() === targetIgnKey
+              );
+              raidStatusStore[raidId].yesVotes = (raidStatusStore[raidId].yesVotes || []).filter(
+                (v: any) => !(v.ign?.trim().toLowerCase() === targetIgnKey)
+              );
+
+              // Clean from party squads
+              raidStatusStore[raidId].party1 = (raidStatusStore[raidId].party1 || []).filter((p: any) => p.ign?.trim().toLowerCase() !== targetIgnKey);
+              raidStatusStore[raidId].party2 = (raidStatusStore[raidId].party2 || []).filter((p: any) => p.ign?.trim().toLowerCase() !== targetIgnKey);
+              raidStatusStore[raidId].party3 = (raidStatusStore[raidId].party3 || []).filter((p: any) => p.ign?.trim().toLowerCase() !== targetIgnKey);
+              raidStatusStore[raidId].reserves = (raidStatusStore[raidId].reserves || []).filter((p: any) => p.ign?.trim().toLowerCase() !== targetIgnKey);
+
+              const currentNo = raidStatusStore[raidId].noVotes || [];
+              if (!currentNo.some((v: any) => v.ign?.trim().toLowerCase() === targetIgnKey)) {
+                currentNo.push({
+                  userId: `dc_${discordId}_${targetIgn}`,
+                  discordId,
+                  ign: targetIgn,
+                  job: targetChar?.job || "取消參加",
+                  level: targetChar?.level || "",
+                  discord: { id: discordId, username, avatar }
+                });
+                raidStatusStore[raidId].noVotes = currentNo;
+              }
+            }
+          }
 
           if (raidStatusStore[raidId]) {
-            const targetChar = (raidStatusStore[raidId].yesVotes || []).find(
-              (v: any) => v.ign?.trim().toLowerCase() === targetIgnKey
-            );
-            raidStatusStore[raidId].yesVotes = (raidStatusStore[raidId].yesVotes || []).filter(
-              (v: any) => !(v.ign?.trim().toLowerCase() === targetIgnKey)
-            );
-
-            // Clean from party squads
-            raidStatusStore[raidId].party1 = (raidStatusStore[raidId].party1 || []).filter((p: any) => p.ign?.trim().toLowerCase() !== targetIgnKey);
-            raidStatusStore[raidId].party2 = (raidStatusStore[raidId].party2 || []).filter((p: any) => p.ign?.trim().toLowerCase() !== targetIgnKey);
-            raidStatusStore[raidId].party3 = (raidStatusStore[raidId].party3 || []).filter((p: any) => p.ign?.trim().toLowerCase() !== targetIgnKey);
-            raidStatusStore[raidId].reserves = (raidStatusStore[raidId].reserves || []).filter((p: any) => p.ign?.trim().toLowerCase() !== targetIgnKey);
-
-            const currentNo = raidStatusStore[raidId].noVotes || [];
-            if (!currentNo.some((v: any) => v.ign?.trim().toLowerCase() === targetIgnKey)) {
-              currentNo.push({
-                userId: `dc_${discordId}_${targetIgn}`,
-                discordId,
-                ign: targetIgn,
-                job: targetChar?.job || "取消參加",
-                level: targetChar?.level || "",
-                discord: { id: discordId, username, avatar }
-              });
-              raidStatusStore[raidId].noVotes = currentNo;
-            }
             saveRaidStatuses();
             updateDiscordCardMessage(raidId).catch(() => {});
           }
@@ -1428,7 +1671,7 @@ async function startServer() {
           return respondAndAutoDelete({
             type: 7,
             data: {
-              content: `❌ <@${discordId}> 已成功個別取消角色 **【${targetIgn}】** 的報名！\n${remainingSignups.length > 0 ? `\n📌 您仍有 ${remainingSignups.length} 隻角色保留在遠征隊中：\n` + remainingSignups.map(s => `• 🗡️ **${s.ign}** (${s.job})`).join('\n') : ''}\n*(已即時更新至 Discord 頻道卡片與網站)*\n\n*(⏱️ 此訊息將於 1 分鐘後自動隱藏/消失)*`,
+              content: `❌ <@${discordId}> 已成功取消 **${canceledIgns.length}** 位角色 (${canceledIgns.map(i => `**【${i}】**`).join(', ')}) 的報名！\n${remainingSignups.length > 0 ? `\n📌 您仍有 ${remainingSignups.length} 隻角色保留在遠征隊中：\n` + remainingSignups.map(s => `• 🗡️ **${s.ign}** (${s.job})`).join('\n') : ''}\n*(已即時更新至 Discord 頻道卡片與網站)*\n\n*(⏱️ 此訊息將於 1 分鐘後自動隱藏/消失)*`,
               components: []
             }
           });
