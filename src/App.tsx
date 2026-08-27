@@ -1245,7 +1245,7 @@ export default function App() {
     setShowInteractiveModal(true);
   };
 
-  const executePostInteractiveCard = async (targetChannelId: string, customNote?: string) => {
+  const executePostInteractiveCard = async (targetChannelId: string, customNote?: string, deleteOldCard: boolean = true) => {
     const raid = activeRaid;
     if (!raid || !discordConfig?.botToken) return;
 
@@ -1282,6 +1282,7 @@ export default function App() {
           botToken: discordConfig.botToken,
           channelId: targetChannelId,
           raidId: raid.id,
+          deleteOldCard: deleteOldCard,
           title: `⚔️ 【${raid.title || raidBoss?.name.split(' (')[0]}】出團意願調查與陣容！`,
           bossName: raidBoss?.name.split(' (')[0] || raid.title,
           targetCount: raidBoss?.maxPlayers || 12,

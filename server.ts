@@ -267,6 +267,7 @@ async function startServer() {
       botToken, 
       channelId, 
       raidId, 
+      deleteOldCard,
       title, 
       bossName, 
       targetCount, 
@@ -292,6 +293,24 @@ async function startServer() {
     try {
       const cleanToken = botToken.trim().replace(/^Bot\s+/i, '');
       const raidKey = raidId || "default_raid";
+
+      // If deleteOldCard is requested (defaults to true), delete previous card if it exists in the store
+      const shouldDelete = deleteOldCard !== false;
+      if (shouldDelete && raidStatusStore[raidKey] && raidStatusStore[raidKey].messageId && raidStatusStore[raidKey].channelId) {
+        const oldMsgId = raidStatusStore[raidKey].messageId;
+        const oldChanId = raidStatusStore[raidKey].channelId;
+        try {
+          console.log(`[Discord API] Auto-deleting old interactive card message ${oldMsgId} in channel ${oldChanId}`);
+          await fetch(`https://discord.com/api/v10/channels/${oldChanId}/messages/${oldMsgId}`, {
+            method: "DELETE",
+            headers: {
+              "Authorization": `Bot ${cleanToken}`
+            }
+          });
+        } catch (delErr) {
+          console.error("[Discord API] Failed to auto-delete old interactive card message:", delErr);
+        }
+      }
 
       // Build Figure 2 style roster & survey texts
       const yesListText = Array.isArray(yesVotes) && yesVotes.length > 0
@@ -417,6 +436,73 @@ async function startServer() {
     } catch (error: any) {
       console.error("Failed to post interactive card to Discord:", error);
       return res.status(500).json({ error: error.message || "Failed to post interactive card" });
+    }
+  });
+
+  // API Route - Clear all Discord messages sent by this bot in a channel
+  app.post("/api/discord/clear-channel-messages", async (req: express.Request, res: express.Response) => {
+    const { botToken, channelId } = req.body;
+
+    if (!botToken || !channelId) {
+      return res.status(400).json({ error: "Missing botToken or channelId" });
+    }
+
+    try {
+      const cleanToken = botToken.trim().replace(/^Bot\s+/i, '');
+
+      // 1. Get bot's own user ID
+      const meRes = await fetch("https://discord.com/api/v10/users/@me", {
+        headers: {
+          "Authorization": `Bot ${cleanToken}`
+        }
+      });
+      if (!meRes.ok) {
+        throw new Error(`Failed to verify bot token or get bot user info: ${meRes.statusText}`);
+      }
+      const meData = await meRes.json() as any;
+      const botId = meData.id;
+
+      // 2. Fetch recent 100 messages in the channel
+      const listRes = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages?limit=100`, {
+        headers: {
+          "Authorization": `Bot ${cleanToken}`
+        }
+      });
+      if (!listRes.ok) {
+        throw new Error(`Failed to fetch channel messages: ${listRes.statusText}`);
+      }
+      const messages = await listRes.json() as any;
+      if (!Array.isArray(messages)) {
+        throw new Error("Channel messages response is not an array");
+      }
+
+      // 3. Filter messages sent by this bot
+      const botMessages = messages.filter((msg: any) => msg.author?.id === botId);
+      console.log(`[Discord API Sync Clear] Found ${botMessages.length} messages from bot in channel ${channelId}. Deleting...`);
+
+      let deletedCount = 0;
+      for (const msg of botMessages) {
+        const deleteUrl = `https://discord.com/api/v10/channels/${channelId}/messages/${msg.id}`;
+        try {
+          const delRes = await fetch(deleteUrl, {
+            method: "DELETE",
+            headers: {
+              "Authorization": `Bot ${cleanToken}`
+            }
+          });
+          if (delRes.ok) {
+            deletedCount++;
+          }
+          await new Promise(resolve => setTimeout(resolve, 200)); // Rate limit buffer
+        } catch (delErr) {
+          console.error(`[Discord API Sync Clear] Failed to delete message ${msg.id}:`, delErr);
+        }
+      }
+
+      return res.json({ success: true, deletedCount });
+    } catch (error: any) {
+      console.error("Failed to clear channel messages:", error);
+      return res.status(500).json({ error: error.message || "Failed to clear channel messages" });
     }
   });
 

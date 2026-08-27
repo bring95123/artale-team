@@ -13,12 +13,13 @@ interface InteractiveCardModalProps {
   raid: any;
   bossName: string;
   discordConfig: DiscordConfig | null;
-  onSend: (targetChannelId: string, customNote?: string) => Promise<void>;
+  onSend: (targetChannelId: string, customNote?: string, deleteOldCard?: boolean) => Promise<void>;
   isSending: boolean;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 const STORAGE_KEY = 'nyxshade_saved_discord_channels';
+const DELETE_PREV_KEY = 'nyxshade_delete_old_card_pref';
 
 export default function InteractiveCardModal({
   isOpen,
@@ -35,6 +36,45 @@ export default function InteractiveCardModal({
   const [savedChannels, setSavedChannels] = useState<SavedChannel[]>([]);
   const [channelNameInput, setChannelNameInput] = useState<string>('');
   const [showSaveInline, setShowSaveInline] = useState<boolean>(false);
+  const [deleteOldCard, setDeleteOldCard] = useState<boolean>(true);
+  const [isClearing, setIsClearing] = useState<boolean>(false);
+
+  const handleDeepClearChannel = async () => {
+    if (!targetChannelId.trim() || !discordConfig?.botToken) {
+      showToast("⚠️ 請輸入有效的頻道 ID 且確認已設定機器人 Token！", "error");
+      return;
+    }
+
+    if (!window.confirm("確定要清除此頻道中由本機器人發出的所有歷史訊息與卡片嗎？\n(這將翻找最近的 100 則訊息並刪除其中所有本機器人發送的內容)")) {
+      return;
+    }
+
+    setIsClearing(true);
+    try {
+      const response = await fetch("/api/discord/clear-channel-messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          botToken: discordConfig.botToken,
+          channelId: targetChannelId.trim()
+        })
+      });
+
+      const resData = await response.json();
+      if (response.ok && resData.success) {
+        showToast(`🧹 深度清除成功！已為您刪除 ${resData.deletedCount} 則歷史舊訊息。`, "success");
+      } else {
+        showToast(`⚠️ 清除失敗：${resData.error || "未知錯誤"}`, "error");
+      }
+    } catch (err: any) {
+      console.error("Deep clear error:", err);
+      showToast(`⚠️ 清除過程中發生錯誤：${err.message || "網路錯誤"}`, "error");
+    } finally {
+      setIsClearing(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -54,6 +94,14 @@ export default function InteractiveCardModal({
       } catch (e) {
         console.warn("Failed to load saved channels:", e);
       }
+
+      // Load delete old card preference
+      try {
+        const savedPref = localStorage.getItem(DELETE_PREV_KEY);
+        if (savedPref !== null) {
+          setDeleteOldCard(savedPref === 'true');
+        }
+      } catch (e) {}
     }
   }, [isOpen, discordConfig]);
 
@@ -101,7 +149,11 @@ export default function InteractiveCardModal({
       showToast("⚠️ 請輸入目標 Discord 文字或論壇頻道 ID！", "error");
       return;
     }
-    await onSend(targetChannelId.trim(), customNote.trim());
+    // Save user deleteOldCard preference
+    try {
+      localStorage.setItem(DELETE_PREV_KEY, String(deleteOldCard));
+    } catch (e) {}
+    await onSend(targetChannelId.trim(), customNote.trim(), deleteOldCard);
   };
 
   return (
@@ -242,6 +294,46 @@ export default function InteractiveCardModal({
                 placeholder="例如：今晚 21:00 準時集合，請自備萬能藥與聖魂！"
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none font-medium"
               />
+            </div>
+
+            {/* Auto Delete Old Card Toggle & Deep Clear */}
+            <div className="flex flex-col p-3.5 bg-indigo-50/40 border border-indigo-100 rounded-2xl select-none space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="pr-2">
+                  <span className="text-xs font-bold text-indigo-955 block">🧹 自動清除此隊伍舊招募卡</span>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">發送新卡時，自動刪除本網頁先前在該頻道發送的舊卡片，避免頻道洗版。</span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input 
+                    type="checkbox" 
+                    checked={deleteOldCard}
+                    onChange={(e) => setDeleteOldCard(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-650 peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+
+              <div className="pt-2.5 border-t border-indigo-100/60 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-slate-700 block">🧽 深度清除歷史所有舊卡片</span>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">一鍵搜尋並刪除此頻道中更早之前由本機器人發布的所有舊卡片與訊息。</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDeepClearChannel}
+                  disabled={isClearing || !targetChannelId.trim()}
+                  className={`text-xs px-3 py-1.5 rounded-xl font-bold border transition-all active:scale-95 shrink-0 ${
+                    !targetChannelId.trim()
+                      ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                      : isClearing
+                      ? 'bg-indigo-50 text-indigo-400 border-indigo-100 cursor-wait animate-pulse'
+                      : 'bg-white hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 text-slate-700 border-slate-200 cursor-pointer'
+                  }`}
+                >
+                  {isClearing ? '清除中...' : '🧹 深度清除'}
+                </button>
+              </div>
             </div>
 
             {/* Interactive Buttons Preview */}
