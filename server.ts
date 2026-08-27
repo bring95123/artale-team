@@ -273,10 +273,10 @@ async function startServer() {
       leaderName, 
       partyMembersSummary, 
       customNote, 
-      appUrl,
       yesVotes = [],
       noVotes = [],
       maybeVotes = [],
+      appUrl = '',
       party1 = [],
       party2 = [],
       party3 = [],
@@ -323,6 +323,7 @@ async function startServer() {
         leaderName: leaderName || '冒險者',
         partyCount: partyCount || 1,
         customNote: customNote || '',
+        appUrl: appUrl || '',
         yesVotes: Array.isArray(yesVotes) ? yesVotes : [],
         noVotes: Array.isArray(noVotes) ? noVotes : [],
         maybeVotes: Array.isArray(maybeVotes) ? maybeVotes : [],
@@ -630,10 +631,10 @@ async function startServer() {
               };
             }),
             {
-              label: "➕ 登記新角色卡並報名 (手動新增)",
-              value: "manual_custom_char",
-              description: "填寫新角色的 IGN 與職業，系統將自動建卡並報名",
-              emoji: { name: "📝" }
+              label: "🌐 前往網站註冊 / 管理角色卡 (開啟網頁)",
+              value: "open_web_register",
+              description: "點此開啟網頁直接註冊角色卡與綁定職業",
+              emoji: { name: "🌐" }
             }
           ];
 
@@ -668,54 +669,30 @@ async function startServer() {
           });
         }
 
-        // USER HAS NOT REGISTERED CHARACTERS: Return text Modal (Type 9)
+        // USER HAS NOT REGISTERED CHARACTERS: Give direct Web Link button to register + fallback manual button
+        const webUrl = raidInfo?.appUrl || (req.headers.origin as string) || (req.get('host') ? `https://${req.get('host')}` : 'https://ais-dev-4ngurwkxlrhrrzz5pek4mo-482405179645.asia-east1.run.app');
         return res.json({
-          type: 9, // MODAL
+          type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
           data: {
-            custom_id: `party_modal_submit_${raidId}`,
-            title: "⚔️ 遠征隊 快速報名",
+            flags: 64,
+            content: `👋 <@${discordId}> 歡迎！\n您目前尚未在網站註冊專屬出團角色卡。\n\n推薦點擊下方按鈕前往網站建立角色卡，建立後即可在 Discord 享受一鍵下拉報名出團的便利！`,
             components: [
               {
                 type: 1, // Action Row
                 components: [
                   {
-                    type: 4, // Text Input
-                    custom_id: "ign",
-                    label: "遊戲角色暱稱 (IGN)",
-                    style: 1, // Short
-                    placeholder: "例如：狂暴之龍",
-                    required: true,
-                    min_length: 2,
-                    max_length: 20
-                  }
-                ]
-              },
-              {
-                type: 1,
-                components: [
+                    type: 2, // BUTTON
+                    style: 5, // Link Button (Opens URL directly)
+                    label: "🌐 立即開啟網站註冊角色卡",
+                    url: webUrl,
+                    emoji: { name: "💳" }
+                  },
                   {
-                    type: 4,
-                    custom_id: "job",
-                    label: "職業",
-                    style: 1,
-                    placeholder: "例如：龍騎士 / 主教 / 夜使者 / 英雄",
-                    required: true,
-                    min_length: 2,
-                    max_length: 20
-                  }
-                ]
-              },
-              {
-                type: 1,
-                components: [
-                  {
-                    type: 4,
-                    custom_id: "level",
-                    label: "角色等級 (Level)",
-                    style: 1,
-                    placeholder: "例如：135",
-                    required: false,
-                    max_length: 3
+                    type: 2,
+                    style: 2, // Secondary
+                    custom_id: `open_modal_btn_${raidId}`,
+                    label: "✍️ 僅本次臨時手動輸入",
+                    emoji: { name: "📝" }
                   }
                 ]
               }
@@ -730,22 +707,30 @@ async function startServer() {
         const selectedValue = interaction.data?.values?.[0] || "";
         const raidInfo = raidStatusStore[raidId];
         const bossTitle = raidInfo?.bossName || raidInfo?.title || "遠征隊";
+        const webUrl = raidInfo?.appUrl || (req.headers.origin as string) || (req.get('host') ? `https://${req.get('host')}` : 'https://ais-dev-4ngurwkxlrhrrzz5pek4mo-482405179645.asia-east1.run.app');
 
-        if (selectedValue === "manual_custom_char") {
+        if (selectedValue === "open_web_register" || selectedValue === "manual_custom_char") {
           return res.json({
             type: 7, // UPDATE_MESSAGE
             data: {
-              content: `➕ **登記新角色卡並立即報名**\n\n點擊下方按鈕填寫您的 **遊戲暱稱 (IGN)**、**職業** 與 **等級**。\n填寫後系統將會：\n1️⃣ 立即將此角色報名至 **【${bossTitle}】**\n2️⃣ **自動建立並永久儲存為您的專屬角色卡**，下次報名即可直接在選單一鍵點選！`,
+              content: `🌐 **前往網站註冊 / 管理角色卡**\n\n點擊下方按鈕即可直接開啟網站進行角色卡註冊與管理！\n在網站設定完成後，下次在 Discord 點選「🙋 快速報名」即可直接一鍵下拉選擇出團角色！`,
               components: [
                 {
                   type: 1,
                   components: [
                     {
                       type: 2, // BUTTON
-                      style: 1, // Primary (Blurple)
+                      style: 5, // Link Button (Opens URL directly)
+                      label: "🚀 點此開啟網站註冊角色卡",
+                      url: webUrl,
+                      emoji: { name: "🌐" }
+                    },
+                    {
+                      type: 2,
+                      style: 2, // Secondary
                       custom_id: `open_modal_btn_${raidId}`,
-                      label: "📝 開啟表單：登記新角色卡並報名",
-                      emoji: { name: "🎮" }
+                      label: "✍️ 快速手動輸入報名",
+                      emoji: { name: "📝" }
                     }
                   ]
                 }
