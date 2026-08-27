@@ -113,6 +113,21 @@ export function ProfileModal({
         updatedAt: new Date().toISOString()
       });
 
+      // Sync user profile to backend server for instant Discord interaction pre-loading
+      if (discordUser?.id) {
+        fetch('/api/discord/sync-user-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            discordId: discordUser.id,
+            username: discordUser.username,
+            avatar: discordUser.avatar,
+            characters: profileData.characters,
+            activeCharacterIndex: profileData.activeCharacterIndex
+          })
+        }).catch(e => console.warn("Failed to sync profile to server:", e));
+      }
+
       if (raids && raids.length > 0) {
         const activeChar = profileData.characters[profileData.activeCharacterIndex] || profileData.characters[0];
         if (activeChar) {

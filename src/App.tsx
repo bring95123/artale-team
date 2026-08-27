@@ -381,6 +381,84 @@ export default function App() {
     return () => unsubscribe();
   }, [db]);
 
+  // Sync Registered Users & Character Cards to Backend Server for Discord Interaction Pre-loading
+  useEffect(() => {
+    if (!db) return;
+    const usersCol = collection(db, `artifacts/${appId}/public/data/registered_users`);
+    const unsubscribe = onSnapshot(usersCol, (snapshot) => {
+      const rosterMap: Record<string, any> = {};
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const discordId = data.discord?.id || data.userId || docSnap.id;
+        if (discordId && data.characters) {
+          rosterMap[discordId] = {
+            username: data.discord?.username || '',
+            avatar: data.discord?.avatar || '',
+            characters: data.characters,
+            activeCharacterIndex: data.activeCharacterIndex || 0
+          };
+        }
+      });
+      if (Object.keys(rosterMap).length > 0) {
+        fetch('/api/discord/sync-roster', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ registeredUsers: rosterMap })
+        }).catch(e => console.warn("Failed to sync roster to server:", e));
+      }
+    }, (err) => console.error("Sync registered users failed", err));
+
+    return () => unsubscribe();
+  }, [db]);
+
+  // Sync Raid Statuses (Figure 2 Survey Data) to Server
+  useEffect(() => {
+    if (!raids || raids.length === 0) return;
+    for (const r of raids) {
+      const raidBoss = bosses.find(b => b.id === r.bossId);
+      const participants = r.participants || [];
+      const party1 = participants.filter((p: any) => p.party === '1');
+      const party2 = participants.filter((p: any) => p.party === '2');
+      const party3 = participants.filter((p: any) => p.party === '3');
+      const reserves = participants.filter((p: any) => p.party === 'reserve');
+      const interestVotes = r.votes || [];
+      const yesVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'yes' || Object.values(v.votes || {}).includes('yes'));
+      const noVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'no' || (Object.values(v.votes || {}).includes('no') && !Object.values(v.votes || {}).includes('yes')));
+
+      fetch('/api/discord/sync-raid-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          raidId: r.id,
+          title: r.title,
+          bossName: raidBoss?.name.split(' (')[0] || r.title,
+          partyCount: r.partyCount || 1,
+          targetCount: raidBoss?.maxPlayers || 12,
+          leaderName: r.creatorIgn || '團長',
+          customNote: r.notes || '',
+          yesVotes: yesVotes.map((v: any) => ({
+            ign: v.ign,
+            job: v.job,
+            level: v.level,
+            discordId: v.discord?.id || v.discordId || (v.userId?.startsWith('dc_') ? v.userId.replace('dc_', '') : ''),
+            username: v.discord?.username || ''
+          })),
+          noVotes: noVotes.map((v: any) => ({
+            ign: v.ign,
+            job: v.job,
+            level: v.level,
+            discordId: v.discord?.id || v.discordId || (v.userId?.startsWith('dc_') ? v.userId.replace('dc_', '') : ''),
+            username: v.discord?.username || ''
+          })),
+          party1: party1.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId })),
+          party2: party2.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId })),
+          party3: party3.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId })),
+          reserves: reserves.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId }))
+        })
+      }).catch(e => {});
+    }
+  }, [raids, bosses]);
+
   // 6. Sync active character profile
   useEffect(() => {
     if (!db || !customUid) return;
@@ -1039,6 +1117,12 @@ export default function App() {
     const party1 = participants.filter((p: any) => p.party === '1');
     const party2 = participants.filter((p: any) => p.party === '2');
     const party3 = participants.filter((p: any) => p.party === '3');
+    const reserves = participants.filter((p: any) => p.party === 'reserve');
+
+    // Extract Figure 2 Survey Intentions
+    const interestVotes = raid.votes || [];
+    const yesVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'yes' || Object.values(v.votes || {}).includes('yes'));
+    const noVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'no' || (Object.values(v.votes || {}).includes('no') && !Object.values(v.votes || {}).includes('yes')));
     
     let partyMembersSummary = "";
     const formatP = (list: any[], name: string) => {
@@ -1059,14 +1143,33 @@ export default function App() {
           botToken: discordConfig.botToken,
           channelId: targetChannelId,
           raidId: raid.id,
-          title: `⚔️ 【${raidBoss?.name.split(' (')[0] || raid.title}】互動招募中！`,
+          title: `⚔️ 【${raidBoss?.name.split(' (')[0] || raid.title}】出團意願調查與陣容！`,
           bossName: raidBoss?.name.split(' (')[0] || raid.title,
           targetCount: raidBoss?.maxPlayers || 12,
           currentCount: activeMembers.length,
           leaderName: raid.creatorIgn || '團長',
           partyMembersSummary,
           customNote,
-          appUrl: window.location.href
+          appUrl: window.location.href,
+          partyCount: raid.partyCount || 1,
+          yesVotes: yesVotes.map((v: any) => ({
+            ign: v.ign,
+            job: v.job,
+            level: v.level,
+            discordId: v.discord?.id || v.discordId || (v.userId?.startsWith('dc_') ? v.userId.replace('dc_', '') : ''),
+            username: v.discord?.username || ''
+          })),
+          noVotes: noVotes.map((v: any) => ({
+            ign: v.ign,
+            job: v.job,
+            level: v.level,
+            discordId: v.discord?.id || v.discordId || (v.userId?.startsWith('dc_') ? v.userId.replace('dc_', '') : ''),
+            username: v.discord?.username || ''
+          })),
+          party1: party1.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId })),
+          party2: party2.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId })),
+          party3: party3.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId })),
+          reserves: reserves.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId }))
         })
       });
 
