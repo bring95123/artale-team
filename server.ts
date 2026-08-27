@@ -348,11 +348,6 @@ async function startServer() {
             inline: false
           },
           {
-            name: `🔴 行程不克參加的人員 (${(noVotes || []).length} 人)`,
-            value: noListText.length > 1024 ? noListText.slice(0, 1020) + '...' : noListText,
-            inline: false
-          },
-          {
             name: `👥 目前小隊陣容錄取編組`,
             value: (partyRosterText || partyMembersSummary || '*(暫無隊員錄取)*').slice(0, 1024),
             inline: false
@@ -521,11 +516,6 @@ async function startServer() {
           {
             name: `🟢 行程可以配合的人員 (${yesVotes.length} 人)`,
             value: yesListText.length > 1024 ? yesListText.slice(0, 1020) + '...' : yesListText,
-            inline: false
-          },
-          {
-            name: `🔴 行程不克參加的人員 (${noVotes.length} 人)`,
-            value: noListText.length > 1024 ? noListText.slice(0, 1020) + '...' : noListText,
             inline: false
           },
           {

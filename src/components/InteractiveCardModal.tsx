@@ -2,6 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DiscordConfig } from '../types';
 
+interface SavedChannel {
+  id: string;
+  name: string;
+}
+
 interface InteractiveCardModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -12,6 +17,8 @@ interface InteractiveCardModalProps {
   isSending: boolean;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
+
+const STORAGE_KEY = 'nyxshade_saved_discord_channels';
 
 export default function InteractiveCardModal({
   isOpen,
@@ -25,14 +32,69 @@ export default function InteractiveCardModal({
 }: InteractiveCardModalProps) {
   const [targetChannelId, setTargetChannelId] = useState<string>('');
   const [customNote, setCustomNote] = useState<string>('');
+  const [savedChannels, setSavedChannels] = useState<SavedChannel[]>([]);
+  const [channelNameInput, setChannelNameInput] = useState<string>('');
+  const [showSaveInline, setShowSaveInline] = useState<boolean>(false);
 
   useEffect(() => {
-    if (isOpen && discordConfig) {
-      setTargetChannelId(discordConfig.botChannelId || '');
+    if (isOpen) {
+      if (discordConfig?.botChannelId) {
+        setTargetChannelId(discordConfig.botChannelId);
+      }
+      
+      // Load saved channels from local storage
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            setSavedChannels(parsed);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to load saved channels:", e);
+      }
     }
   }, [isOpen, discordConfig]);
 
   if (!isOpen || !raid) return null;
+
+  const handleSaveCurrentChannel = () => {
+    const id = targetChannelId.trim();
+    const name = channelNameInput.trim() || `頻道 ${id.slice(-4)}`;
+    if (!id) {
+      showToast("⚠️ 請先輸入頻道 ID 再進行記錄！", "error");
+      return;
+    }
+
+    const exists = savedChannels.find(c => c.id === id);
+    let updated: SavedChannel[];
+    if (exists) {
+      updated = savedChannels.map(c => c.id === id ? { ...c, name } : c);
+    } else {
+      updated = [...savedChannels, { id, name }];
+    }
+
+    setSavedChannels(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      showToast(`⭐ 已成功記錄頻道「${name}」！`);
+      setChannelNameInput('');
+      setShowSaveInline(false);
+    } catch (e) {
+      showToast("保存頻道記錄失敗", "error");
+    }
+  };
+
+  const handleDeleteSavedChannel = (idToDelete: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = savedChannels.filter(c => c.id !== idToDelete);
+    setSavedChannels(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      showToast("已刪除該頻道記錄");
+    } catch (e) {}
+  };
 
   const handleSendCard = async () => {
     if (!targetChannelId.trim()) {
@@ -49,13 +111,13 @@ export default function InteractiveCardModal({
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 w-full max-w-lg shadow-2xl relative my-auto text-slate-900"
+          className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 w-full max-w-lg shadow-2xl relative my-auto text-slate-900 font-sans"
         >
           {/* Close button */}
           <button 
             type="button" 
             onClick={onClose} 
-            className="absolute right-4 top-4 text-slate-400 hover:text-slate-700 transition-colors duration-150 p-2 rounded-xl bg-slate-100 hover:bg-slate-200"
+            className="absolute right-4 top-4 text-slate-400 hover:text-slate-700 transition-colors duration-150 p-2 rounded-xl bg-slate-100 hover:bg-slate-200 cursor-pointer"
             aria-label="Close"
           >
             ✕
@@ -74,20 +136,98 @@ export default function InteractiveCardModal({
           </div>
 
           <div className="space-y-4 my-4">
+            {/* Target Channel Section */}
             <div>
-              <label className="block text-xs font-bold text-indigo-900 uppercase mb-1.5">
-                🎯 目標 Discord 頻道 ID (Channel ID) <span className="text-red-500">*</span>
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-indigo-900 uppercase">
+                  🎯 目標 Discord 頻道 ID (Channel ID) <span className="text-red-500">*</span>
+                </label>
+                
+                <button
+                  type="button"
+                  onClick={() => setShowSaveInline(!showSaveInline)}
+                  className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center space-x-1 underline cursor-pointer"
+                >
+                  <span>{showSaveInline ? '收起記錄欄' : '⭐ 記錄目前頻道 ID'}</span>
+                </button>
+              </div>
+
+              {/* Saved Channels Selector Chips */}
+              {savedChannels.length > 0 && (
+                <div className="mb-2 bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+                  <span className="text-[10px] font-bold text-slate-500 block mb-1.5">⭐ 已記錄的常用頻道（點擊代入）：</span>
+                  <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+                    {savedChannels.map((c) => {
+                      const isSelected = targetChannelId.trim() === c.id;
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => setTargetChannelId(c.id)}
+                          className={`inline-flex items-center text-xs px-2.5 py-1 rounded-xl border font-bold cursor-pointer transition active:scale-95 ${
+                            isSelected 
+                              ? 'bg-indigo-600 border-indigo-500 text-white shadow-sm ring-2 ring-indigo-400/30' 
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span className="mr-1 font-sans">{c.name}</span>
+                          <span className="text-[10px] opacity-70 font-mono mr-1">({c.id.slice(-4)})</span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSavedChannel(c.id, e)}
+                            className="hover:text-rose-400 pl-1 font-bold"
+                            title="刪除此記錄"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Inline Save Form */}
+              {showSaveInline && (
+                <div className="mb-2 p-2.5 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2 animate-in fade-in duration-150">
+                  <span className="text-xs font-bold text-indigo-900 block">⭐ 將輸入框中的頻道 ID 保存為常用頻道</span>
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={channelNameInput}
+                      onChange={(e) => setChannelNameInput(e.target.value)}
+                      placeholder="設定別名，例：09/01 招募頻道"
+                      className="flex-1 bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-500 font-bold"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveCurrentChannel}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold shadow-sm cursor-pointer shrink-0"
+                    >
+                      儲存記錄
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <input
                 type="text"
                 value={targetChannelId}
                 onChange={(e) => setTargetChannelId(e.target.value)}
                 placeholder="例如：123456789012345678"
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
               />
-              <div className="text-[11px] text-slate-500 mt-1 space-y-0.5">
-                <p>1：開啟 Discord 的「開發者模式」</p>
-                <p>2 : 點選頻道右鍵複製頻道ID</p>
+              
+              <div className="text-[11px] text-slate-500 mt-1 flex justify-between items-center">
+                <span>1. 開啟 DC 開發者模式 2. 右鍵頻道複製 ID</span>
+                {discordConfig?.botChannelId && targetChannelId !== discordConfig.botChannelId && (
+                  <button
+                    type="button"
+                    onClick={() => setTargetChannelId(discordConfig.botChannelId!)}
+                    className="text-indigo-600 hover:underline font-bold"
+                  >
+                    帶入預設頻道 ({discordConfig.botChannelId.slice(-4)})
+                  </button>
+                )}
               </div>
             </div>
 
@@ -100,7 +240,7 @@ export default function InteractiveCardModal({
                 onChange={(e) => setCustomNote(e.target.value)}
                 rows={2}
                 placeholder="例如：今晚 21:00 準時集合，請自備萬能藥與聖魂！"
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none font-medium"
               />
             </div>
 
@@ -111,7 +251,7 @@ export default function InteractiveCardModal({
               </span>
               <div className="flex flex-wrap gap-2 pt-1">
                 <span className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 shadow-sm opacity-90">
-                  <span>🙋 快速報名 / 變更職業</span>
+                  <span>🙋 快速報名 / 選擇角色卡</span>
                 </span>
                 <span className="bg-rose-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 shadow-sm opacity-90">
                   <span>❌ 取消報名</span>
@@ -130,7 +270,7 @@ export default function InteractiveCardModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition"
+              className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition cursor-pointer"
             >
               取消
             </button>
@@ -138,7 +278,7 @@ export default function InteractiveCardModal({
               type="button"
               onClick={handleSendCard}
               disabled={isSending || !targetChannelId.trim()}
-              className="px-5 py-2.5 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-md transition flex items-center space-x-1.5"
+              className="px-5 py-2.5 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-md transition flex items-center space-x-1.5 cursor-pointer"
             >
               {isSending ? (
                 <span>🚀 發送中...</span>

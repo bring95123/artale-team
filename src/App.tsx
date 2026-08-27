@@ -1242,7 +1242,7 @@ export default function App() {
           botToken: discordConfig.botToken,
           channelId: targetChannelId,
           raidId: raid.id,
-          title: `⚔️ 【${raidBoss?.name.split(' (')[0] || raid.title}】出團意願調查與陣容！`,
+          title: `⚔️ 【${raid.title || raidBoss?.name.split(' (')[0]}】出團意願調查與陣容！`,
           bossName: raidBoss?.name.split(' (')[0] || raid.title,
           targetCount: raidBoss?.maxPlayers || 12,
           currentCount: activeMembers.length,
