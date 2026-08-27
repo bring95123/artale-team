@@ -126,6 +126,17 @@ export interface GachaResult {
   };
 }
 
+export interface AuthorizedAdmin {
+  id: string;
+  ign: string;
+  discordUsername?: string;
+  discordId?: string;
+  customUid?: string;
+  memo?: string;
+  grantedAt?: string;
+  grantedBy?: string;
+}
+
 // MaplesStory Artale Default Presets
 export const DEFAULT_BOSS_LIST: Boss[] = [
   { id: 'zakum_normal', name: '普通炎魔 (Normal Zakum)', icon: '🔥', color: 'from-amber-600 to-red-700', maxPlayers: 6, desc: '最經典 of 8 手炎魔，需要良好調度。' },

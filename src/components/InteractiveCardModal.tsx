@@ -260,8 +260,9 @@ export default function InteractiveCardModal({
                   <span>📋 隊伍現況</span>
                 </span>
               </div>
-              <p className="text-[10px] text-amber-700 font-medium pt-1">
-                💡 提醒：若在 DC 點按鈕顯示「未及時回應」，請確認已在 Discord Developer Portal 的 <b>INTERACTIONS ENDPOINT URL</b> 填入本系統網址。
+              <p className="text-[10px] text-amber-700 font-medium pt-1 space-y-0.5">
+                <span>💡 提醒：若在 DC 點按鈕顯示「未及時回應」，請確認已在 Discord Developer Portal 的 <b>INTERACTIONS ENDPOINT URL</b> 填入本系統網址。</span>
+                <span className="block text-emerald-700 font-bold">🔄 系統已啟動：後台將每 60 秒 (1 分鐘) 自動定時巡檢並同步刷新 Discord 卡片！</span>
               </p>
             </div>
           </div>

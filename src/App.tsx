@@ -19,7 +19,8 @@ import {
   DiscordConfig, 
   DiscordUser, 
   DEFAULT_JOB_CATEGORIES, 
-  DEFAULT_BOSS_LIST 
+  DEFAULT_BOSS_LIST,
+  AuthorizedAdmin
 } from './types';
 
 // Modular component imports
@@ -123,6 +124,7 @@ export default function App() {
     discord: null
   });
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const activeCharacter = profile.characters?.[profile.activeCharacterIndex] || profile.characters?.[0] || { ign: '', job: '主教', level: 120, memo: '' };
 
   // Modal Control States
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -187,6 +189,46 @@ export default function App() {
   });
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+
+  // Authorized Admins state & real-time sync
+  const [authorizedAdmins, setAuthorizedAdmins] = useState<AuthorizedAdmin[]>([]);
+
+  useEffect(() => {
+    if (!db) return;
+    const adminsCol = collection(db, `artifacts/${appId}/public/data/authorized_admins`);
+    const unsubscribe = onSnapshot(adminsCol, (snapshot) => {
+      const list: AuthorizedAdmin[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as AuthorizedAdmin);
+      });
+      setAuthorizedAdmins(list);
+    }, (err) => console.error("Sync authorized admins failed:", err));
+
+    return () => unsubscribe();
+  }, [appId]);
+
+  const isAuthorizedAdmin = React.useMemo(() => {
+    if (!authorizedAdmins || authorizedAdmins.length === 0) return false;
+    const myIgn = (activeCharacter.ign || '').trim().toLowerCase();
+    const myDcId = (discordUser?.id || '').trim();
+    const myDcUsername = (discordUser?.username || '').trim().toLowerCase();
+    const myUid = (customUid || '').trim();
+
+    return authorizedAdmins.some(admin => {
+      const adminIgn = (admin.ign || '').trim().toLowerCase();
+      const adminDcId = (admin.discordId || '').trim();
+      const adminDcUsername = (admin.discordUsername || '').trim().toLowerCase();
+      const adminUid = (admin.customUid || '').trim();
+
+      if (myIgn && adminIgn && myIgn === adminIgn) return true;
+      if (myDcId && adminDcId && myDcId === adminDcId) return true;
+      if (myDcUsername && adminDcUsername && myDcUsername === adminDcUsername) return true;
+      if (myUid && adminUid && myUid === adminUid) return true;
+      return false;
+    });
+  }, [authorizedAdmins, activeCharacter.ign, discordUser, customUid]);
+
+  const isAdmin = isAdminLoggedIn || isAuthorizedAdmin;
 
   // Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -542,8 +584,6 @@ export default function App() {
       setIsChatOpen(false);
     }
   }, [currentRaidId]);
-
-  const activeCharacter = profile.characters?.[profile.activeCharacterIndex] || profile.characters?.[0] || { ign: '', job: '主教', level: 120, memo: '' };
 
   const getDiscordLoginUrl = () => {
     if (!discordConfig || !discordConfig.clientId) return '#';
@@ -1558,7 +1598,7 @@ export default function App() {
 
   const activeRaid = raids.find(r => r.id === currentRaidId);
   const boss = activeRaid ? bosses.find(b => b.id === activeRaid.bossId) : null;
-  const isCreator = activeRaid ? (activeRaid.creatorId === customUid || isAdminLoggedIn) : false;
+  const isCreator = activeRaid ? (activeRaid.creatorId === customUid || isAdmin) : false;
 
   const myScheduleRaids = raids.filter(raid => {
     if (!activeCharacter.ign) return false;
@@ -1714,7 +1754,7 @@ export default function App() {
           bosses={bosses}
           currentRaidId={currentRaidId}
           setCurrentRaidId={setCurrentRaidId}
-          isAdminLoggedIn={isAdminLoggedIn}
+          isAdminLoggedIn={isAdmin}
           setIsCreating={setIsCreating}
           setShowProfileModal={setShowProfileModal}
           setShowBossManagerModal={setShowBossManagerModal}
@@ -1758,7 +1798,7 @@ export default function App() {
                     多身分角色與 Discord 驗證登入！
                   </p>
                   <div className="mt-6 flex flex-wrap gap-3 select-none">
-                    {isAdminLoggedIn && (
+                    {isAdmin && (
                       <>
                         <button 
                           onClick={() => setIsCreating(true)}
@@ -2009,7 +2049,7 @@ export default function App() {
                 </div>
 
                 <div className="p-6 space-y-5">
-                  {isAdminLoggedIn && (
+                  {isAdmin && (
                     <div className="bg-amber-550/10 border border-amber-500/20 text-amber-300 rounded-2xl p-4 text-xs font-semibold leading-relaxed flex items-start gap-2.5 select-none">
                       <span className="text-sm">👑</span>
                       <div>
@@ -2743,12 +2783,19 @@ export default function App() {
         <div className="mt-2 space-x-3 flex items-center justify-center flex-wrap gap-y-1">
           {isAdminLoggedIn ? (
             <>
-              <button onClick={() => setShowAdminConsole(true)} className="text-amber-500 hover:text-amber-400 hover:underline font-bold transition">🔑 開啟管理者控制台</button>
+              <button onClick={() => setShowAdminConsole(true)} className="text-amber-500 hover:text-amber-400 hover:underline font-bold transition cursor-pointer">🔑 開啟管理者控制台</button>
               <span className="text-slate-800">•</span>
-              <button onClick={handleAdminLogout} className="text-rose-500 hover:text-rose-400 hover:underline transition">登出管理模式</button>
+              <button onClick={handleAdminLogout} className="text-rose-500 hover:text-rose-400 hover:underline transition cursor-pointer">登出 Master 管理模式</button>
             </>
+          ) : isAuthorizedAdmin ? (
+            <div className="inline-flex items-center space-x-2">
+              <span className="text-emerald-400 font-extrabold text-xs bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
+                👑 授權管理員 (免密碼)
+              </span>
+              <button onClick={() => setShowAdminConsole(true)} className="text-amber-400 hover:text-amber-300 font-extrabold hover:underline transition cursor-pointer">🔑 開啟管理者控制台</button>
+            </div>
           ) : (
-            <button onClick={() => setShowAdminLoginModal(true)} className="text-slate-600 hover:text-slate-500 hover:underline transition">🔑 系統管理者登入</button>
+            <button onClick={() => setShowAdminLoginModal(true)} className="text-slate-600 hover:text-slate-500 hover:underline transition cursor-pointer">🔑 系統管理者登入</button>
           )}
           <span className="text-slate-800">•</span>
           <button onClick={() => setShowIssueReportModal(true)} className="text-rose-405 text-rose-400 hover:text-rose-300 hover:underline transition font-bold select-none cursor-pointer">🐛 問題或建議回報</button>
@@ -2872,7 +2919,7 @@ export default function App() {
       {/* Admin Console setups */}
       <AdminConsoleModal 
         appId={appId}
-        isAdminLoggedIn={isAdminLoggedIn}
+        isAdminLoggedIn={isAdmin}
         setIsAdminLoggedIn={setIsAdminLoggedIn}
         showAdminConsole={showAdminConsole}
         setShowAdminConsole={setShowAdminConsole}
@@ -2880,6 +2927,7 @@ export default function App() {
         setDiscordConfig={setDiscordConfig}
         handleResetConfig={handleResetConfig}
         showToast={showToast}
+        authorizedAdmins={authorizedAdmins}
       />
 
       {/* ==================== BUG / FEATURE SUGGESTION REPORT MODAL ==================== */}

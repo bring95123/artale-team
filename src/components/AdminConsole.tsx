@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { DiscordConfig, Profile } from '../types';
+import { DiscordConfig, Profile, AuthorizedAdmin } from '../types';
 import JobIcon from './JobIcon';
 
 interface AdminConsoleProps {
@@ -14,6 +14,7 @@ interface AdminConsoleProps {
   setDiscordConfig: (cfg: DiscordConfig) => void;
   handleResetConfig: () => void;
   showToast: (msg: string, type?: 'success' | 'error') => void;
+  authorizedAdmins?: AuthorizedAdmin[];
 }
 
 export function AdminConsoleModal({
@@ -25,13 +26,37 @@ export function AdminConsoleModal({
   discordConfig,
   setDiscordConfig,
   handleResetConfig,
-  showToast
+  showToast,
+  authorizedAdmins: propAuthorizedAdmins
 }: AdminConsoleProps) {
   const [registeredUsers, setRegisteredUsers] = useState<any[]>([]);
+  const [authorizedAdmins, setAuthorizedAdmins] = useState<AuthorizedAdmin[]>(propAuthorizedAdmins || []);
   const [searchQuery, setSearchQuery] = useState('');
   const [newWebhookName, setNewWebhookName] = useState('');
   const [newWebhookUrl, setNewWebhookUrl] = useState('');
-  const [activeTab, setActiveTab] = useState<'members' | 'discord' | 'webhooks' | 'system'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'admins' | 'discord' | 'webhooks' | 'system'>('members');
+
+  // Authorized Admin form states
+  const [newAdminIgn, setNewAdminIgn] = useState('');
+  const [newAdminDcUsername, setNewAdminDcUsername] = useState('');
+  const [newAdminDcId, setNewAdminDcId] = useState('');
+  const [newAdminMemo, setNewAdminMemo] = useState('');
+
+  // Sync authorized admins from Firestore
+  useEffect(() => {
+    if (!db) return;
+    const adminsCol = collection(db, `artifacts/${appId}/public/data/authorized_admins`);
+    const unsubscribe = onSnapshot(adminsCol, (snapshot) => {
+      const list: AuthorizedAdmin[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as AuthorizedAdmin);
+      });
+      setAuthorizedAdmins(list);
+    }, (error) => {
+      console.error("Failed to fetch authorized admins:", error);
+    });
+    return () => unsubscribe();
+  }, [appId]);
 
   const handleAddWebhook = () => {
     if (!newWebhookName.trim() || !newWebhookUrl.trim()) {
@@ -107,6 +132,46 @@ export function AdminConsoleModal({
     }
   };
 
+  const handleAddAuthorizedAdmin = async () => {
+    if (!newAdminIgn.trim() && !newAdminDcUsername.trim() && !newAdminDcId.trim()) {
+      showToast("請至少填寫 遊戲角色 ID (IGN) 或 Discord 帳號/ID！", "error");
+      return;
+    }
+
+    const docId = `admin_${Date.now()}`;
+    try {
+      const adminRef = doc(db, `artifacts/${appId}/public/data/authorized_admins/${docId}`);
+      await setDoc(adminRef, {
+        id: docId,
+        ign: newAdminIgn.trim(),
+        discordUsername: newAdminDcUsername.trim(),
+        discordId: newAdminDcId.trim(),
+        memo: newAdminMemo.trim() || '授權管理員',
+        grantedAt: new Date().toISOString()
+      });
+
+      setNewAdminIgn('');
+      setNewAdminDcUsername('');
+      setNewAdminDcId('');
+      setNewAdminMemo('');
+      showToast(`🎉 成功將 【${newAdminIgn.trim() || newAdminDcUsername.trim()}】 設為授權管理員！`);
+    } catch (err: any) {
+      showToast(`授權失敗: ${err.message}`, "error");
+    }
+  };
+
+  const handleRemoveAuthorizedAdmin = async (adminId: string, ign: string) => {
+    if (confirm(`確定要撤銷 【${ign || '該成員'}】 的管理員授權嗎？`)) {
+      try {
+        const adminRef = doc(db, `artifacts/${appId}/public/data/authorized_admins/${adminId}`);
+        await deleteDoc(adminRef);
+        showToast(`已撤銷 【${ign || '該成員'}】 的管理員權限！`);
+      } catch (err: any) {
+        showToast(`撤銷失敗: ${err.message}`, "error");
+      }
+    }
+  };
+
   const handleSaveDiscordConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -158,34 +223,41 @@ export function AdminConsoleModal({
         </div>
 
         {/* Tab Selector Buttons */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 bg-slate-100 border border-slate-200 rounded-2xl mb-3.5 select-none shrink-0">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 p-1 bg-slate-100 border border-slate-200 rounded-2xl mb-3.5 select-none shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab('members')}
             className={`flex items-center justify-center space-x-1 py-1.5 sm:py-2 rounded-xl font-bold text-xs transition ${activeTab === 'members' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}
           >
-            <span>👥 成員管理</span>
+            <span>👥 成員</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('admins')}
+            className={`flex items-center justify-center space-x-1 py-1.5 sm:py-2 rounded-xl font-bold text-xs transition ${activeTab === 'admins' ? 'bg-white text-amber-700 shadow-sm border border-amber-300' : 'text-slate-600 hover:text-amber-700'}`}
+          >
+            <span>👑 授權管理 ({authorizedAdmins.length})</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('discord')}
             className={`flex items-center justify-center space-x-1 py-1.5 sm:py-2 rounded-xl font-bold text-xs transition ${activeTab === 'discord' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}
           >
-            <span>🛡️ 連線及 Bot</span>
+            <span>🛡️ Bot</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('webhooks')}
             className={`flex items-center justify-center space-x-1 py-1.5 sm:py-2 rounded-xl font-bold text-xs transition ${activeTab === 'webhooks' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900'}`}
           >
-            <span>📢 廣播 Webhooks</span>
+            <span>📢 廣播</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('system')}
             className={`flex items-center justify-center space-x-1 py-1.5 sm:py-2 rounded-xl font-bold text-xs transition ${activeTab === 'system' ? 'bg-rose-50 text-rose-700 shadow-sm border border-rose-200' : 'text-slate-600 hover:text-rose-700'}`}
           >
-            <span>⚠️ 系統維護</span>
+            <span>⚠️ 維護</span>
           </button>
         </div>
 
@@ -225,13 +297,28 @@ export function AdminConsoleModal({
                       <div key={u.id} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="font-bold text-slate-700 text-xs">👤 用戶身分 ({chars.length} 個角色)</span>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteUserProfile(u.userId || u.id, activeChar.ign)}
-                            className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold px-2 py-0.5 rounded-lg text-[11px] transition"
-                          >
-                            🗑️ 刪除角色卡
-                          </button>
+                          <div className="flex items-center space-x-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNewAdminIgn(activeChar.ign || '');
+                                setNewAdminDcUsername(u.discord?.username || '');
+                                setNewAdminDcId(u.discord?.id || u.userId || '');
+                                setActiveTab('admins');
+                                showToast(`已帶入 【${activeChar.ign}】 資料，請點擊「確認新增授權」！`);
+                              }}
+                              className="bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 font-bold px-2 py-0.5 rounded-lg text-[11px] transition cursor-pointer"
+                            >
+                              👑 帶入授權
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUserProfile(u.userId || u.id, activeChar.ign)}
+                              className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold px-2 py-0.5 rounded-lg text-[11px] transition cursor-pointer"
+                            >
+                              🗑️ 刪除
+                            </button>
+                          </div>
                         </div>
 
                         <div className="p-2 bg-white border border-slate-200 rounded-lg flex items-center justify-between gap-2 text-xs">
@@ -264,6 +351,152 @@ export function AdminConsoleModal({
                       </div>
                     );
                   })
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Tab Content: authorized admins */}
+          {activeTab === 'admins' && (
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 font-medium">
+              <div className="border-b border-slate-200 pb-2.5">
+                <h4 className="font-extrabold text-sm text-amber-800 flex items-center gap-1.5">
+                  <span>👑 授權管理員設定 (免密碼自動驗證)</span>
+                </h4>
+                <p className="text-xs text-slate-500 leading-relaxed mt-1">
+                  主控管理員 (Master Admin) 可將特定成員加入授權名單。被授權的隊員登入其遊戲 ID 或 Discord 時，<strong>系統將自動辨識其身分並賦予全功能管理權限，無需每次手動打密碼！</strong>
+                </p>
+              </div>
+
+              {/* Form to add Authorized Admin */}
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-3 text-xs">
+                <h5 className="font-bold text-slate-800 flex items-center gap-1 text-xs">
+                  <span>➕ 新增授權管理員</span>
+                </h5>
+
+                {/* Quick select from registered users */}
+                <div>
+                  <label className="block text-[11px] text-slate-600 mb-1 font-bold">
+                    從已登錄的公會成員快速選取
+                  </label>
+                  <select
+                    onChange={(e) => {
+                      const uId = e.target.value;
+                      if (!uId) return;
+                      const target = registeredUsers.find(u => u.id === uId || u.userId === uId);
+                      if (target) {
+                        const chars = target.characters || [{ ign: target.ign }];
+                        const mainChar = chars[target.activeCharacterIndex || 0] || chars[0];
+                        setNewAdminIgn(mainChar?.ign || '');
+                        setNewAdminDcUsername(target.discord?.username || '');
+                        setNewAdminDcId(target.discord?.id || target.userId || '');
+                      }
+                    }}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 font-bold"
+                  >
+                    <option value="">-- 點此展開選單帶入成員資料 --</option>
+                    {registeredUsers.map(u => {
+                      const chars = u.characters || [{ ign: u.ign, job: u.job }];
+                      const mainChar = chars[u.activeCharacterIndex || 0] || chars[0];
+                      return (
+                        <option key={u.id} value={u.id}>
+                          👤 {mainChar?.ign} ({mainChar?.job}) {u.discord ? `[@${u.discord.username}]` : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] text-slate-600 mb-1 font-bold">
+                      遊戲角色 ID (IGN) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="例如: 補夢網"
+                      value={newAdminIgn}
+                      onChange={(e) => setNewAdminIgn(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-slate-600 mb-1 font-bold">
+                      Discord 用戶名 / ID (選填)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="例如: dreamcatcher"
+                      value={newAdminDcUsername}
+                      onChange={(e) => setNewAdminDcUsername(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-slate-600 mb-1 font-bold">
+                    權限職稱 / 備註 (選填)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="例如: 副團長 / 一隊隊長 / 幹部"
+                    value={newAdminMemo}
+                    onChange={(e) => setNewAdminMemo(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-bold"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAddAuthorizedAdmin}
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2 rounded-xl text-xs transition shadow active:scale-95 cursor-pointer"
+                >
+                  👑 確認新增授權管理員
+                </button>
+              </div>
+
+              {/* List of currently authorized admins */}
+              <div className="space-y-2">
+                <h5 className="font-bold text-xs text-slate-800 flex items-center justify-between">
+                  <span>🛡️ 目前授權管理員名單 ({authorizedAdmins.length})</span>
+                </h5>
+
+                {authorizedAdmins.length === 0 ? (
+                  <div className="text-center text-slate-400 text-xs italic py-6 bg-white p-3 rounded-xl border border-slate-200">
+                    目前尚未新增任何授權管理員（主控管理員仍可透過預設密碼登入）
+                  </div>
+                ) : (
+                  authorizedAdmins.map((admin) => (
+                    <div key={admin.id} className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-2 text-xs">
+                      <div className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-black text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-xs">
+                            👑 {admin.ign || '未知 IGN'}
+                          </span>
+                          {admin.memo && (
+                            <span className="bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-[10px] text-slate-600 font-bold">
+                              📌 {admin.memo}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono space-x-2">
+                          {admin.discordUsername && <span>Discord: @{admin.discordUsername}</span>}
+                          {admin.discordId && <span>ID: {admin.discordId}</span>}
+                          {admin.grantedAt && <span>• {new Date(admin.grantedAt).toLocaleDateString()} 授權</span>}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAuthorizedAdmin(admin.id, admin.ign)}
+                        className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-[11px] font-bold px-2.5 py-1 rounded-lg transition shrink-0 active:scale-95 cursor-pointer"
+                      >
+                        🗑️ 撤銷
+                      </button>
+                    </div>
+                  ))
                 )}
               </div>
             </div>

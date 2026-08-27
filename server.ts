@@ -545,6 +545,22 @@ async function startServer() {
     }
   };
 
+  // 🔄 伺服器端：每分鐘 (60 秒) 自動定時輪詢刷新所有已發送的 Discord 招募卡片
+  setInterval(async () => {
+    try {
+      const activeRaidIds = Object.keys(raidStatusStore);
+      if (activeRaidIds.length === 0) return;
+      for (const raidId of activeRaidIds) {
+        const info = raidStatusStore[raidId];
+        if (info && info.botToken && info.channelId && info.messageId) {
+          await updateDiscordCardMessage(raidId).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.warn("[Auto-Refresh Interval] Error updating Discord cards:", e);
+    }
+  }, 60000);
+
   // API Route - Sync full roster of registered users & characters from web client
   app.post("/api/discord/sync-roster", (req: express.Request, res: express.Response) => {
     const { registeredUsers } = req.body;
