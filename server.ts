@@ -631,6 +631,64 @@ async function startServer() {
     return res.status(400).json({ error: "Missing raidId or filter criteria" });
   });
 
+  // API Route - Record Web Signup to Server Store and patch Discord Card
+  app.post("/api/discord/record-web-signup", (req: express.Request, res: express.Response) => {
+    const { raidId, discordId, ign, job, level, memo, userId } = req.body;
+    if (raidId && ign) {
+      if (!discordSignupsStore[raidId]) {
+        discordSignupsStore[raidId] = [];
+      }
+
+      const signupRecord = {
+        discordId: discordId || "",
+        ign,
+        job: job || "主教",
+        level: level || 120,
+        memo: memo || "",
+        userId: userId || (discordId ? `dc_${discordId}_${ign}` : `web_${ign}`),
+        signedUpAt: new Date().toISOString()
+      };
+
+      const existingIdx = discordSignupsStore[raidId].findIndex(s =>
+        s.ign?.trim().toLowerCase() === ign.trim().toLowerCase()
+      );
+      if (existingIdx >= 0) {
+        discordSignupsStore[raidId][existingIdx] = signupRecord;
+      } else {
+        discordSignupsStore[raidId].push(signupRecord);
+      }
+
+      if (raidStatusStore[raidId]) {
+        const currentYes = raidStatusStore[raidId].yesVotes || [];
+        const vIdx = currentYes.findIndex((v: any) =>
+          v.ign?.trim().toLowerCase() === ign.trim().toLowerCase()
+        );
+        const voterObj = {
+          userId: signupRecord.userId,
+          discordId: discordId || undefined,
+          ign,
+          job: job || "主教",
+          level: level || 120,
+          memo: memo || ""
+        };
+        if (vIdx >= 0) {
+          currentYes[vIdx] = voterObj;
+        } else {
+          currentYes.push(voterObj);
+        }
+        raidStatusStore[raidId].yesVotes = currentYes;
+        raidStatusStore[raidId].noVotes = (raidStatusStore[raidId].noVotes || []).filter((v: any) =>
+          !(v.ign?.trim().toLowerCase() === ign.trim().toLowerCase())
+        );
+        saveRaidStatuses();
+        updateDiscordCardMessage(raidId).catch(() => {});
+      }
+
+      return res.json({ success: true });
+    }
+    return res.status(400).json({ error: "Missing raidId or ign" });
+  });
+
   // API Route - Sync Raid Status (Figure 2 data) from Web Client
   app.post("/api/discord/sync-raid-status", (req: express.Request, res: express.Response) => {
     const { raidId, ...statusData } = req.body;

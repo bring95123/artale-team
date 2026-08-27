@@ -751,6 +751,7 @@ export default function App() {
         userVote.discord = discordUser || userVote.discord || null;
 
         if (userVote.votes && userVote.votes[timeIndex] === choice) {
+          // Toggle OFF (Cancel)
           const nextVotes = { ...userVote.votes };
           delete nextVotes[timeIndex];
           userVote.votes = nextVotes;
@@ -762,14 +763,46 @@ export default function App() {
             updatedVotes[userVoteIndex] = userVote;
           }
           await updateDoc(raidRef, { votes: updatedVotes });
-          showToast("已取消投票意願！");
+
+          // Synchronously remove from server store & update Discord message embed
+          fetch('/api/discord/remove-signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              raidId,
+              ign: activeCharacter.ign,
+              userId: customUid,
+              discordId: discordUser?.id
+            })
+          }).catch(err => console.warn("Failed to sync remove signup", err));
+
+          showToast(`已取消【${activeCharacter.ign}】的出團登記！`);
         } else {
+          // Change/Update to choice
           userVote.votes = { ...userVote.votes, [timeIndex]: choice };
           updatedVotes[userVoteIndex] = userVote;
           await updateDoc(raidRef, { votes: updatedVotes });
-          showToast("意願更新成功！");
+
+          if (choice === 'yes') {
+            fetch('/api/discord/record-web-signup', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                raidId,
+                ign: activeCharacter.ign,
+                job: activeCharacter.job,
+                level: activeCharacter.level,
+                memo: (activeCharacter.memo || '').trim(),
+                userId: customUid,
+                discordId: discordUser?.id
+              })
+            }).catch(err => console.warn("Failed to record web signup", err));
+          }
+
+          showToast(`🟢 已為【${activeCharacter.ign}】登記可以配合，並同步至 Discord！`, "success");
         }
       } else {
+        // First-time vote
         updatedVotes.push({
           userId: customUid,
           ign: activeCharacter.ign,
@@ -780,7 +813,24 @@ export default function App() {
           votes: { [timeIndex]: choice }
         });
         await updateDoc(raidRef, { votes: updatedVotes });
-        showToast("成功表達意願！");
+
+        if (choice === 'yes') {
+          fetch('/api/discord/record-web-signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              raidId,
+              ign: activeCharacter.ign,
+              job: activeCharacter.job,
+              level: activeCharacter.level,
+              memo: (activeCharacter.memo || '').trim(),
+              userId: customUid,
+              discordId: discordUser?.id
+            })
+          }).catch(err => console.warn("Failed to record web signup", err));
+        }
+
+        showToast(`🟢 成功為【${activeCharacter.ign}】登記可以配合，並同步至 Discord！`, "success");
       }
     } catch (err: any) {
       showToast(`更新失敗: ${err.message}`, "error");
@@ -2146,8 +2196,20 @@ export default function App() {
                     const yesVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'yes' || v.votes?.[0] === 'yes' || v.votes?.['0'] === 'yes' || v.vote === 'yes' || Object.values(v.votes || {}).includes('yes')) || [];
                     const noVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'no' || (v.votes?.[0] === 'no' && !Object.values(v.votes || {}).includes('yes')) || (v.vote === 'no' && !Object.values(v.votes || {}).includes('yes'))) || [];
 
-                    const myVoteRecord = interestVotes.find((v: any) => v.userId === customUid && v.ign === activeCharacter.ign);
-                    const myChoice = myVoteRecord?.votes?.['interest'] || null;
+                    const myVoteRecord = interestVotes.find((v: any) => 
+                      (v.ign && v.ign.trim().toLowerCase() === activeCharacter.ign.trim().toLowerCase()) ||
+                      (v.userId === customUid && v.ign === activeCharacter.ign) ||
+                      (discordUser?.id && (v.discordId === discordUser.id || v.discord?.id === discordUser.id) && v.ign?.trim().toLowerCase() === activeCharacter.ign.trim().toLowerCase())
+                    );
+                    const isMyCharacterVotedYes = Boolean(
+                      myVoteRecord && (
+                        myVoteRecord.votes?.['interest'] === 'yes' || 
+                        myVoteRecord.votes?.[0] === 'yes' || 
+                        myVoteRecord.votes?.['0'] === 'yes' || 
+                        myVoteRecord.vote === 'yes' || 
+                        Object.values(myVoteRecord.votes || {}).includes('yes')
+                      )
+                    );
 
                     const renderVoterBadges = (votersList: any[], emoji: string) => {
                       if (votersList.length === 0) return null;
@@ -2231,22 +2293,24 @@ export default function App() {
                             <h4 className="text-sm sm:text-base font-bold text-slate-200">
                               您本週是否有意願與時間參加【{boss?.name.split(' (')[0]}】突襲團？
                             </h4>
-                            <p className="text-xs text-slate-500 mt-1">選取會自動代入右上角的當前角色身分卡。</p>
+                            <p className="text-xs text-slate-400 mt-1 flex items-center space-x-1.5">
+                              <span>當前報名角色：</span>
+                              <strong className="text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-lg">{activeCharacter.ign || '(未設定角色)'}</strong>
+                              <span className="text-slate-500">({activeCharacter.job || '無'} Lv.{activeCharacter.level || '?'})</span>
+                            </p>
                           </div>
-                          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:space-x-3 select-none w-full md:w-auto">
+                          <div className="flex items-center select-none w-full md:w-auto">
                             <button
                               type="button"
                               onClick={() => handleVoteTime(activeRaid.id, 'interest', 'yes')}
-                              className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-1.5 active:scale-95 ${myChoice === 'yes' ? 'bg-emerald-600 text-white shadow shadow-emerald-500/25' : 'bg-slate-800 hover:bg-slate-750 text-slate-300'}`}
+                              className={`w-full md:w-auto py-2.5 px-6 rounded-xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-2 active:scale-95 border ${
+                                isMyCharacterVotedYes 
+                                  ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-white shadow-lg shadow-emerald-600/30 ring-2 ring-emerald-400/60' 
+                                  : 'bg-slate-800 hover:bg-slate-750 border-slate-700 text-slate-300 hover:text-white'
+                              }`}
                             >
-                              <span>🟢 可以配合</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleVoteTime(activeRaid.id, 'interest', 'no')}
-                              className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-1.5 active:scale-95 ${myChoice === 'no' ? 'bg-rose-600 text-white shadow shadow-rose-500/25' : 'bg-slate-800 hover:bg-slate-755 text-slate-300'}`}
-                            >
-                              <span>🔴 不行參戰</span>
+                              <span className={`w-2.5 h-2.5 rounded-full ${isMyCharacterVotedYes ? 'bg-white animate-pulse' : 'bg-emerald-500'}`}></span>
+                              <span>{isMyCharacterVotedYes ? '🟢 已登記可以配合 (點擊取消)' : '🟢 可以配合'}</span>
                             </button>
                           </div>
                         </div>
@@ -2255,10 +2319,6 @@ export default function App() {
                           <div>
                             <span className="text-xs text-emerald-400 font-bold block mb-1">🟢 行程可以配合的人員 ({yesVotes.length} 人)：</span>
                             {yesVotes.length > 0 ? renderVoterBadges(yesVotes, '🟢') : <span className="text-slate-500 text-xs italic block py-1 font-sans">目前無隊員登記</span>}
-                          </div>
-                          <div>
-                            <span className="text-xs text-rose-400 font-bold block mb-1">🔴 行程不克參加的人員 ({noVotes.length} 人)：</span>
-                            {noVotes.length > 0 ? renderVoterBadges(noVotes, '🔴') : <span className="text-slate-500 text-xs italic block py-1 font-sans">目前無隊員登記</span>}
                           </div>
                         </div>
                       </div>
@@ -2279,12 +2339,14 @@ export default function App() {
 
                   <div className="space-y-4 sm:space-y-6">
                     {activeRaid.proposedTimes?.map((time: string, idx: number) => {
-                      const yesVotes = activeRaid.votes?.filter((v: any) => v.votes?.[idx] === 'yes') || [];
-                      const maybeVotes = activeRaid.votes?.filter((v: any) => v.votes?.[idx] === 'maybe') || [];
-                      const noVotes = activeRaid.votes?.filter((v: any) => v.votes?.[idx] === 'no') || [];
+                      const yesVotes = activeRaid.votes?.filter((v: any) => v.votes?.[idx] === 'yes' || v.votes?.[String(idx)] === 'yes') || [];
 
-                      const myVoteRecord = activeRaid.votes?.find((v: any) => v.userId === customUid && v.ign === activeCharacter.ign);
-                      const myChoice = myVoteRecord?.votes?.[idx] || null;
+                      const myVoteRecord = activeRaid.votes?.find((v: any) => 
+                        (v.ign && v.ign.trim().toLowerCase() === activeCharacter.ign.trim().toLowerCase()) ||
+                        (v.userId === customUid && v.ign === activeCharacter.ign) ||
+                        (discordUser?.id && (v.discordId === discordUser.id || v.discord?.id === discordUser.id) && v.ign?.trim().toLowerCase() === activeCharacter.ign.trim().toLowerCase())
+                      );
+                      const isVotedYes = Boolean(myVoteRecord?.votes?.[idx] === 'yes' || myVoteRecord?.votes?.[String(idx)] === 'yes');
 
                       const isFinalized = activeRaid.finalTimeIndex === idx;
 
@@ -2382,29 +2444,18 @@ export default function App() {
                             </div>
 
                             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 select-none w-full md:w-auto">
-                              <div className="grid grid-cols-3 gap-1.5 flex-1 md:flex-none">
-                                <button
-                                  type="button"
-                                  onClick={() => handleVoteTime(activeRaid.id, idx, 'yes')}
-                                  className={`py-2 px-2.5 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center ${myChoice === 'yes' ? 'bg-emerald-600 text-white shadow shadow-emerald-500/25' : 'bg-slate-800 hover:bg-slate-750 text-slate-300'}`}
-                                >
-                                  🟢 可以
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleVoteTime(activeRaid.id, idx, 'maybe')}
-                                  className={`py-2 px-2.5 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center ${myChoice === 'maybe' ? 'bg-amber-600 text-white shadow shadow-amber-500/20' : 'bg-slate-800 hover:bg-slate-750 text-slate-300'}`}
-                                >
-                                  🟡 也許
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleVoteTime(activeRaid.id, idx, 'no')}
-                                  className={`py-2 px-2.5 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center ${myChoice === 'no' ? 'bg-rose-600 text-white shadow shadow-rose-500/20' : 'bg-slate-800 hover:bg-slate-750 text-slate-300'}`}
-                                >
-                                  🔴 不行
-                                </button>
-                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleVoteTime(activeRaid.id, idx, 'yes')}
+                                className={`w-full md:w-auto py-2 px-5 rounded-xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-2 border ${
+                                  isVotedYes 
+                                    ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-white shadow-lg shadow-emerald-600/30 ring-2 ring-emerald-400/60' 
+                                    : 'bg-slate-800 hover:bg-slate-750 border-slate-700 text-slate-300 hover:text-white'
+                                }`}
+                              >
+                                <span className={`w-2.5 h-2.5 rounded-full ${isVotedYes ? 'bg-white animate-pulse' : 'bg-emerald-500'}`}></span>
+                                <span>{isVotedYes ? '🟢 已登記可以配合 (點擊取消)' : '🟢 可以配合'}</span>
+                              </button>
 
                               {isCreator && (
                                 <div className="flex items-center gap-1.5 font-black w-full md:w-auto mt-1 md:mt-0">
@@ -2432,26 +2483,13 @@ export default function App() {
                           </div>
 
                           <div className="border-t border-slate-800/80 pt-3 space-y-2 font-mono">
-                            {yesVotes.length > 0 && (
+                            {yesVotes.length > 0 ? (
                               <div>
-                                <span className="text-xs text-emerald-400 font-bold block mb-1">🟢 可以配合的隊員：</span>
+                                <span className="text-xs text-emerald-400 font-bold block mb-1">🟢 可以配合的隊員 ({yesVotes.length} 人)：</span>
                                 {renderVoterBadges(yesVotes, '🟢')}
                               </div>
-                            )}
-                            {maybeVotes.length > 0 && (
-                              <div>
-                                <span className="text-xs text-amber-400 font-bold block mb-1">🟡 可能出戰的隊員：</span>
-                                {renderVoterBadges(maybeVotes, '🟡')}
-                              </div>
-                            )}
-                            {noVotes.length > 0 && (
-                              <div>
-                                <span className="text-xs text-rose-400 font-bold block mb-1">🔴 無法配合的隊員：</span>
-                                {renderVoterBadges(noVotes, '🔴')}
-                              </div>
-                            )}
-                            {yesVotes.length === 0 && maybeVotes.length === 0 && noVotes.length === 0 && (
-                              <span className="text-slate-600 text-xs italic block py-1 font-sans">目前尚無人對此候選時段投票</span>
+                            ) : (
+                              <span className="text-slate-600 text-xs italic block py-1 font-sans">目前尚無人對此候選時段登記</span>
                             )}
                           </div>
                         </div>
