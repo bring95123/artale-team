@@ -478,8 +478,41 @@ async function startServer() {
     }
 
     try {
-      const yesVotes = raidInfo.yesVotes || [];
       const noVotes = raidInfo.noVotes || [];
+      const noVotesMap = new Set(noVotes.map((nv: any) => (nv.ign || '').trim().toLowerCase()));
+
+      // Combine raidInfo.yesVotes with active signups from discordSignupsStore
+      const yesVotesMap = new Map<string, any>();
+      (raidInfo.yesVotes || []).forEach((v: any) => {
+        if (v && v.ign) {
+          const ignKey = v.ign.trim().toLowerCase();
+          if (!noVotesMap.has(ignKey)) {
+            yesVotesMap.set(ignKey, v);
+          }
+        }
+      });
+
+      const storeSignups = discordSignupsStore[raidId] || [];
+      storeSignups.forEach((s: any) => {
+        if (s && s.ign) {
+          const ignKey = s.ign.trim().toLowerCase();
+          if (!noVotesMap.has(ignKey) && !yesVotesMap.has(ignKey)) {
+            yesVotesMap.set(ignKey, {
+              userId: s.userId || `dc_${s.discordId}_${s.ign}`,
+              discordId: s.discordId,
+              ign: s.ign,
+              job: s.job,
+              level: s.level || 120,
+              memo: s.memo || '',
+              discord: { id: s.discordId, username: s.username, avatar: s.avatar }
+            });
+          }
+        }
+      });
+
+      const yesVotes = Array.from(yesVotesMap.values());
+      raidStatusStore[raidId].yesVotes = yesVotes;
+
       const party1 = raidInfo.party1 || [];
       const party2 = raidInfo.party2 || [];
       const party3 = raidInfo.party3 || [];
@@ -488,10 +521,6 @@ async function startServer() {
 
       const yesListText = Array.isArray(yesVotes) && yesVotes.length > 0
         ? yesVotes.map((v: any) => `• **${v.ign}** (${v.job || '未知'} Lv.${v.level || '?'}) ${v.discordId ? `<@${v.discordId}>` : ''}`).join('\n')
-        : '*(目前無隊員登記)*';
-
-      const noListText = Array.isArray(noVotes) && noVotes.length > 0
-        ? noVotes.map((v: any) => `• **${v.ign}** (${v.job || '未知'} Lv.${v.level || '?'}) ${v.discordId ? `<@${v.discordId}>` : ''}`).join('\n')
         : '*(目前無隊員登記)*';
 
       let partyRosterText = '';
@@ -510,7 +539,7 @@ async function startServer() {
 
       const embed = {
         title: raidInfo.title || `⚔️ 【${raidInfo.bossName || '遠征隊'}】 隊伍招募與意願調查！`,
-        description: `👑 **隊長**：${raidInfo.leaderName || '冒險者'} ｜ 🎯 **目標人數**：\`${(yesVotes || []).length} / ${raidInfo.targetCount || 12} 人\`${noteSection}`,
+        description: `👑 **隊長**：${raidInfo.leaderName || '冒險者'} ｜ 🎯 **目標人數**：\`${yesVotes.length} / ${raidInfo.targetCount || 12} 人\`${noteSection}`,
         color: 5814783,
         fields: [
           {
@@ -530,16 +559,53 @@ async function startServer() {
         }
       };
 
-      await fetch(`https://discord.com/api/v10/channels/${raidInfo.channelId}/messages/${raidInfo.messageId}`, {
+      const components = [
+        {
+          type: 1, // ACTION_ROW
+          components: [
+            {
+              type: 2, // BUTTON
+              style: 1, // Primary (Blue)
+              custom_id: `party_signup_${raidId}`,
+              label: "🙋 快速報名 / 選擇角色卡",
+              emoji: { name: "🙋" }
+            },
+            {
+              type: 2, // BUTTON
+              style: 4, // Danger (Red)
+              custom_id: `party_cancel_${raidId}`,
+              label: "❌ 取消報名",
+              emoji: { name: "❌" }
+            },
+            {
+              type: 2, // BUTTON
+              style: 2, // Secondary (Gray)
+              custom_id: `party_status_${raidId}`,
+              label: "📋 隊伍現況",
+              emoji: { name: "📋" }
+            }
+          ]
+        }
+      ];
+
+      const patchResponse = await fetch(`https://discord.com/api/v10/channels/${raidInfo.channelId}/messages/${raidInfo.messageId}`, {
         method: "PATCH",
         headers: {
           "Authorization": `Bot ${raidInfo.botToken}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          embeds: [embed]
+          embeds: [embed],
+          components
         })
       });
+
+      if (!patchResponse.ok) {
+        const errorText = await patchResponse.text();
+        console.warn(`[updateDiscordCardMessage] Discord API returned ${patchResponse.status}: ${errorText}`);
+      } else {
+        console.log(`[updateDiscordCardMessage] Successfully updated Discord Card message ${raidInfo.messageId} for raid ${raidId}`);
+      }
     } catch (err) {
       console.warn("Failed to patch Discord card message:", err);
     }

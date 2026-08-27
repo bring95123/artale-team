@@ -1451,6 +1451,27 @@ export default function App() {
           updateData.participants = filteredParticipants;
         }
         await updateDoc(raidRef, updateData);
+
+        // Sync latest votes and party roster back to backend server so original Discord card is immediately patched
+        const p1 = filteredParticipants.filter((p: any) => p.party === '1');
+        const p2 = filteredParticipants.filter((p: any) => p.party === '2');
+        const p3 = filteredParticipants.filter((p: any) => p.party === '3');
+        const res = filteredParticipants.filter((p: any) => p.party === 'reserve');
+
+        fetch('/api/discord/sync-raid-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            raidId,
+            yesVotes: filteredVotes.filter(v => v.vote === 'yes' || Object.values(v.votes || {}).includes('yes')),
+            noVotes: noVotes,
+            party1: p1,
+            party2: p2,
+            party3: p3,
+            reserves: res
+          })
+        }).catch(() => {});
+
         if (!silent) showToast(`🔄 成功同步名單紀錄！`, "success");
       } else if (!silent) {
         showToast("名單已與 Discord 同步完畢，無新變動。");
