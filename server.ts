@@ -383,7 +383,7 @@ async function startServer() {
   });
 
   // API Route - Discord Interactions Webhook Endpoint
-  app.post("/api/discord/interactions", (req: express.Request, res: express.Response) => {
+  app.post("/api/discord/interactions", async (req: express.Request, res: express.Response) => {
     const signature = req.get("X-Signature-Ed25519");
     const timestamp = req.get("X-Signature-Timestamp");
     const publicKey = (serverDiscordPublicKey || process.env.DISCORD_PUBLIC_KEY || "").trim();
@@ -399,7 +399,7 @@ async function startServer() {
     }
 
     try {
-      const isValid = verifyKey((req as any).rawBody, signature, timestamp, publicKey);
+      const isValid = await verifyKey((req as any).rawBody, signature, timestamp, publicKey);
       if (!isValid) {
         console.warn(`[Discord Interactions] Invalid signature with key prefix: ${publicKey.slice(0, 6)}...`);
         return res.status(401).send("Bad request signature");
