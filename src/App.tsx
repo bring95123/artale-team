@@ -1334,14 +1334,27 @@ export default function App() {
       
       const data = await response.json();
       const signups: any[] = data.signups || [];
+      const yesVotes: any[] = data.yesVotes || [];
+      const noVotes: any[] = data.noVotes || [];
 
       const raid = raids.find(r => r.id === raidId);
       if (!raid) return;
 
       const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
       let currentVotes = [...(raid.votes || [])];
+      let currentParticipants = [...(raid.participants || [])];
       let hasChanges = false;
       let addedCount = 0;
+
+      // Sets of IGNs from server stores
+      const activeSignupIgns = new Set([
+        ...signups.map((s: any) => (s.ign || '').trim().toLowerCase()),
+        ...yesVotes.map((v: any) => (v.ign || '').trim().toLowerCase())
+      ]);
+
+      const cancelledIgns = new Set(
+        noVotes.map((v: any) => (v.ign || '').trim().toLowerCase())
+      );
 
       // 1. Deduplicate currentVotes by IGN to ensure no duplicate cards ever exist
       const uniqueVotes: any[] = [];
@@ -1356,9 +1369,12 @@ export default function App() {
         }
       }
 
-      // 2. Incorporate Discord signups
+      // 2. Incorporate active Discord signups
       for (const signup of signups) {
         const signupIgnKey = (signup.ign || '').trim().toLowerCase();
+        if (!signupIgnKey) continue;
+        if (cancelledIgns.has(signupIgnKey)) continue;
+
         const existingIdx = uniqueVotes.findIndex(v => 
           (v.ign && v.ign.trim().toLowerCase() === signupIgnKey) ||
           (v.discordId && v.discordId === signup.discordId && v.ign === signup.ign) || 
@@ -1395,23 +1411,47 @@ export default function App() {
         }
       }
 
-      // 3. Remove votes that originated from Discord bot if they are no longer in server signups (user canceled)
-      const currentSignupIgns = new Set(signups.map((s: any) => (s.ign || '').trim().toLowerCase()));
+      // 3. Remove votes that were explicitly cancelled on Discord bot OR removed from active signups
       const filteredVotes = uniqueVotes.filter(v => {
-        const isFromDiscordBot = v.userId?.startsWith('dc_') || (v.memo && v.memo.includes('Discord 卡片報名'));
-        if (isFromDiscordBot) {
-          const isStillSignedUp = currentSignupIgns.has((v.ign || '').trim().toLowerCase());
-          if (!isStillSignedUp) {
-            hasChanges = true;
-            return false; // Remove canceled discord signup
-          }
+        const vIgnKey = (v.ign || '').trim().toLowerCase();
+        if (!vIgnKey) return true;
+
+        // If explicitly marked as cancelled / no-vote on server
+        if (cancelledIgns.has(vIgnKey)) {
+          hasChanges = true;
+          return false;
         }
+
+        // If originated from Discord bot / synced with Discord, but no longer in active signups
+        const isFromDiscord = v.userId?.startsWith('dc_') || (v.memo && v.memo.includes('Discord 卡片報名')) || v.discordId || v.discord?.id;
+        if (isFromDiscord && !activeSignupIgns.has(vIgnKey) && (noVotes.length > 0 || signups.length > 0)) {
+          hasChanges = true;
+          return false;
+        }
+
         return true;
       });
 
+      // 4. Also check participants roster for cancelled IGNs
+      let filteredParticipants = currentParticipants;
+      if (cancelledIgns.size > 0) {
+        const initialLen = currentParticipants.length;
+        filteredParticipants = currentParticipants.filter(p => {
+          const pIgnKey = (p.ign || '').trim().toLowerCase();
+          return !pIgnKey || !cancelledIgns.has(pIgnKey);
+        });
+        if (filteredParticipants.length !== initialLen) {
+          hasChanges = true;
+        }
+      }
+
       if (hasChanges) {
-        await updateDoc(raidRef, { votes: filteredVotes });
-        if (!silent) showToast(`🔄 成功同步 ${signups.length} 筆 Discord 卡片報名紀錄（新增 ${addedCount} 人）！`, "success");
+        const updateData: any = { votes: filteredVotes };
+        if (filteredParticipants !== currentParticipants) {
+          updateData.participants = filteredParticipants;
+        }
+        await updateDoc(raidRef, updateData);
+        if (!silent) showToast(`🔄 成功同步名單紀錄！`, "success");
       } else if (!silent) {
         showToast("名單已與 Discord 同步完畢，無新變動。");
       }
