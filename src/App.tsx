@@ -489,6 +489,22 @@ export default function App() {
             };
           }
           setProfile(loadedProfile);
+
+          // Synchronize profile to server store for Discord interactions
+          const syncDcId = loadedProfile.discord?.id || discordUser?.id || (customUid?.startsWith('dc_') ? customUid.replace('dc_', '') : '');
+          if (syncDcId && loadedProfile.characters?.length > 0) {
+            fetch('/api/discord/sync-user-profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                discordId: syncDcId,
+                username: loadedProfile.discord?.username || discordUser?.username || loadedProfile.characters[0]?.ign || "Adventurer",
+                avatar: loadedProfile.discord?.avatar || discordUser?.avatar || "",
+                characters: loadedProfile.characters,
+                activeCharacterIndex: loadedProfile.activeCharacterIndex
+              })
+            }).catch(() => {});
+          }
         } else {
           // Open Modal for first-time use
           setShowProfileModal(true);
@@ -501,6 +517,53 @@ export default function App() {
 
     fetchProfile();
   }, [db, customUid, discordUser]);
+
+  // Sync roster of all registered raid voters to server store
+  useEffect(() => {
+    if (!raids || raids.length === 0) return;
+    const rosterMap: Record<string, any> = {};
+    for (const r of raids) {
+      if (r.votes && Array.isArray(r.votes)) {
+        for (const v of r.votes) {
+          const dcId = v.discord?.id || v.discordId || (v.userId?.startsWith('dc_') ? v.userId.replace('dc_', '') : '');
+          if (dcId && v.ign) {
+            if (!rosterMap[dcId]) {
+              rosterMap[dcId] = {
+                username: v.discord?.username || v.ign,
+                avatar: v.discord?.avatar || '',
+                characters: []
+              };
+            }
+            if (!rosterMap[dcId].characters.some((c: any) => c.ign === v.ign)) {
+              rosterMap[dcId].characters.push({
+                ign: v.ign,
+                job: v.job || '主教',
+                level: v.level || 120,
+                memo: v.memo || ''
+              });
+            }
+          }
+        }
+      }
+    }
+    if (Object.keys(rosterMap).length > 0) {
+      fetch('/api/discord/sync-roster', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ registeredUsers: rosterMap })
+      }).catch(() => {});
+    }
+  }, [raids]);
+
+  // Auto-sync Discord interactive signups in real-time when viewing a raid
+  useEffect(() => {
+    if (!currentRaidId) return;
+    handleSyncDiscordSignups(currentRaidId, true);
+    const timer = setInterval(() => {
+      handleSyncDiscordSignups(currentRaidId, true);
+    }, 3500);
+    return () => clearInterval(timer);
+  }, [currentRaidId, raids]);
 
   // Keep floating chat closed by default (only opened when user clicks the floating button)
   useEffect(() => {
@@ -1188,16 +1251,16 @@ export default function App() {
     }
   };
 
-  const handleSyncDiscordSignups = async (raidId: string) => {
+  const handleSyncDiscordSignups = async (raidId: string, silent: boolean = false) => {
     try {
       const response = await fetch(`/api/discord/signups/${raidId}`);
-      if (!response.ok) throw new Error("無法取得 Discord 報名資料");
+      if (!response.ok) return;
       
       const data = await response.json();
       const signups = data.signups || [];
 
       if (signups.length === 0) {
-        showToast("ℹ️ 目前 Discord 頻道尚無新傳入的互動卡片報名紀錄。");
+        if (!silent) showToast("ℹ️ 目前 Discord 頻道尚無新傳入的互動卡片報名紀錄。");
         return;
       }
 
@@ -1207,38 +1270,53 @@ export default function App() {
       const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
       let updatedVotes = [...(raid.votes || [])];
       let addedCount = 0;
+      let hasChanges = false;
 
       for (const signup of signups) {
-        const existingVoteIdx = updatedVotes.findIndex(v => v.discordId === signup.discordId || (v.discord && v.discord.id === signup.discordId));
+        const existingVoteIdx = updatedVotes.findIndex(v => 
+          (v.discordId && v.discordId === signup.discordId && v.ign === signup.ign) || 
+          (v.discord && v.discord.id === signup.discordId && v.ign === signup.ign) ||
+          (v.userId === `dc_${signup.discordId}_${signup.ign}`)
+        );
         
         const voteRecord = {
-          userId: `dc_${signup.discordId}`,
+          userId: `dc_${signup.discordId}_${signup.ign}`,
           discordId: signup.discordId,
           ign: signup.ign,
           job: signup.job,
           level: Number(signup.level) || 120,
-          memo: `Discord 卡片報名 (@${signup.username})`,
+          memo: signup.memo || `Discord 卡片報名 (@${signup.username})`,
           discord: {
             id: signup.discordId,
             username: signup.username,
             avatar: signup.avatar
           },
-          votes: { 0: 'yes' }
+          vote: 'yes',
+          votes: { 0: 'yes', interest: 'yes' }
         };
 
         if (existingVoteIdx >= 0) {
-          updatedVotes[existingVoteIdx] = { ...updatedVotes[existingVoteIdx], ...voteRecord };
+          const old = updatedVotes[existingVoteIdx];
+          if (old.ign !== voteRecord.ign || old.job !== voteRecord.job || JSON.stringify(old.votes) !== JSON.stringify(voteRecord.votes)) {
+            updatedVotes[existingVoteIdx] = { ...old, ...voteRecord };
+            hasChanges = true;
+          }
         } else {
           updatedVotes.push(voteRecord);
           addedCount++;
+          hasChanges = true;
         }
       }
 
-      await updateDoc(raidRef, { votes: updatedVotes });
-      showToast(`🔄 成功同步 ${signups.length} 筆 Discord 卡片報名紀錄（新增 ${addedCount} 人）！`, "success");
+      if (hasChanges) {
+        await updateDoc(raidRef, { votes: updatedVotes });
+        if (!silent) showToast(`🔄 成功同步 ${signups.length} 筆 Discord 卡片報名紀錄（新增 ${addedCount} 人）！`, "success");
+      } else if (!silent) {
+        showToast("名單已與 Discord 同步完畢，無新變動。");
+      }
     } catch (err: any) {
       console.error(err);
-      showToast(`❌ 同步失敗: ${err.message}`, "error");
+      if (!silent) showToast(`❌ 同步失敗: ${err.message}`, "error");
     }
   };
 
@@ -2054,8 +2132,8 @@ export default function App() {
 
                   {(() => {
                     const interestVotes = activeRaid.votes || [];
-                    const yesVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'yes') || [];
-                    const noVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'no') || [];
+                    const yesVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'yes' || v.votes?.[0] === 'yes' || v.votes?.['0'] === 'yes' || v.vote === 'yes' || Object.values(v.votes || {}).includes('yes')) || [];
+                    const noVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'no' || (v.votes?.[0] === 'no' && !Object.values(v.votes || {}).includes('yes')) || (v.vote === 'no' && !Object.values(v.votes || {}).includes('yes'))) || [];
 
                     const myVoteRecord = interestVotes.find((v: any) => v.userId === customUid && v.ign === activeCharacter.ign);
                     const myChoice = myVoteRecord?.votes?.['interest'] || null;
@@ -2650,6 +2728,7 @@ export default function App() {
         appId={appId}
         customUid={customUid!}
         discordUser={discordUser}
+        setDiscordUser={setDiscordUser}
         discordConfig={discordConfig}
         jobCategories={jobCategories}
         profile={profile}

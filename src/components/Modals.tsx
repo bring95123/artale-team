@@ -19,6 +19,7 @@ interface ProfileModalProps {
   appId: string;
   customUid: string;
   discordUser: DiscordUser | null;
+  setDiscordUser?: (user: DiscordUser | null) => void;
   discordConfig: DiscordConfig | null;
   jobCategories: { [category: string]: { [tier: string]: string[] } };
   profile: Profile;
@@ -35,6 +36,7 @@ export function ProfileModal({
   appId,
   customUid,
   discordUser,
+  setDiscordUser,
   discordConfig,
   jobCategories,
   profile,
@@ -79,10 +81,6 @@ export function ProfileModal({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!discordUser) {
-      showToast("⚠️ 請先點擊上方按鈕連結 Discord 帳號才能儲存角色卡！", "error");
-      return;
-    }
 
     const hasEmptyIgn = tempCharacters.some(c => !c.ign.trim());
     if (hasEmptyIgn) {
@@ -114,19 +112,37 @@ export function ProfileModal({
       });
 
       // Sync user profile to backend server for instant Discord interaction pre-loading
-      if (discordUser?.id) {
-        fetch('/api/discord/sync-user-profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            discordId: discordUser.id,
-            username: discordUser.username,
-            avatar: discordUser.avatar,
-            characters: profileData.characters,
-            activeCharacterIndex: profileData.activeCharacterIndex
-          })
-        }).catch(e => console.warn("Failed to sync profile to server:", e));
-      }
+      const syncDiscordId = discordUser?.id || customUid;
+      const syncUsername = discordUser?.username || profileData.characters[0]?.ign || "Adventurer";
+      const syncAvatar = discordUser?.avatar || "";
+
+      fetch('/api/discord/sync-user-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          discordId: syncDiscordId,
+          username: syncUsername,
+          avatar: syncAvatar,
+          characters: profileData.characters,
+          activeCharacterIndex: profileData.activeCharacterIndex
+        })
+      }).catch(e => console.warn("Failed to sync profile to server:", e));
+
+      fetch('/api/discord/sync-roster', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          users: [
+            {
+              userId: syncDiscordId,
+              username: syncUsername,
+              avatar: syncAvatar,
+              characters: profileData.characters,
+              activeCharacterIndex: profileData.activeCharacterIndex
+            }
+          ]
+        })
+      }).catch(e => {});
 
       if (raids && raids.length > 0) {
         const activeChar = profileData.characters[profileData.activeCharacterIndex] || profileData.characters[0];
@@ -221,7 +237,7 @@ export function ProfileModal({
                   />
                   <div className="min-w-0">
                     <span className="text-[10px] bg-emerald-50 border border-emerald-200 text-emerald-700 px-2 py-0.5 rounded font-black block w-max select-none">
-                      🟢 已啟用 Discord 雲端備份
+                      🟢 已綁定 Discord 專屬出團身分
                     </span>
                     <p className="text-xs sm:text-sm font-black text-slate-900 mt-0.5 truncate">@{discordUser.username}</p>
                   </div>
@@ -235,43 +251,32 @@ export function ProfileModal({
                 </button>
               </div>
             ) : (
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center space-y-2.5">
-                <h4 className="text-xs sm:text-sm font-black text-slate-800">連結 Discord 以漫遊保存進度</h4>
-                <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                  連結後，更換裝置或清除快取只要透過 Discord 登入即可一秒還原角色卡！
-                </p>
-                <div>
+              <div className="p-3.5 sm:p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-slate-800 flex items-center gap-1.5">
+                      <span>🤖 綁定 Discord 帳號以啟用頻道快速報名</span>
+                    </h4>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                      完成綁定後，在 Discord 點擊「🙋 快速報名」即可直接下拉選取此處的角色卡！
+                    </p>
+                  </div>
                   {discordConfig?.clientId ? (
                     <a
                       href={getDiscordLoginUrl()}
-                      className="inline-flex items-center justify-center space-x-2 bg-[#5865F2] hover:bg-[#4752C4] text-white font-extrabold px-5 py-2.5 rounded-xl transition shadow-sm text-xs w-full sm:w-auto"
+                      className="inline-flex items-center justify-center space-x-1.5 bg-[#5865F2] hover:bg-[#4752C4] text-white font-extrabold px-5 py-2.5 rounded-xl transition shadow-sm text-xs shrink-0 active:scale-95"
                     >
                       <span>⚡ 連結 Discord 帳號</span>
                     </a>
-                  ) : (
-                    <div className="text-xs text-slate-400 italic">
-                      請在底部「管理者控制台」先完成 Discord Client ID 配置方能啟用。
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             )}
           </div>
 
           {/* Character forms */}
-          <div className="relative">
-            {!discordUser && (
-              <div className="absolute inset-0 z-10 bg-white/80 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center text-center p-4 border border-slate-200">
-                <span className="text-3xl mb-1.5">🔒</span>
-                <h4 className="text-sm font-black text-amber-800">出團角色卡已鎖定</h4>
-                <p className="text-xs text-slate-600 max-w-sm mt-1 leading-relaxed">
-                  系統已啟用 Discord 綁定。<br />
-                  請先點擊上方按鈕完成 <strong className="text-indigo-700">Discord 連結認證</strong> 即可解鎖角色卡！
-                </p>
-              </div>
-            )}
-
-            <div className={`space-y-3 font-medium transition-all ${!discordUser ? 'blur-sm pointer-events-none opacity-40 select-none' : ''}`}>
+          <div>
+            <div className="space-y-3 font-medium">
               {tempCharacters.map((char, index) => {
                 const derived = findJobCategoryAndTier(char.job);
                 const currentCategory = derived.category;

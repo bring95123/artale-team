@@ -610,7 +610,34 @@ async function startServer() {
         const bossTitle = raidInfo?.bossName || raidInfo?.title || "遠征隊";
 
         // Check if user has registered character cards on website
-        const userProfile = userCharactersStore[discordId];
+        let userProfile = userCharactersStore[discordId];
+
+        // Robust fallback lookup: match by username, global_name, or stored character IGNs
+        if (!userProfile || !userProfile.characters || userProfile.characters.length === 0) {
+          const matchedEntry = Object.entries(userCharactersStore).find(([k, u]: [string, any]) => {
+            if (u.username && (
+              u.username.toLowerCase() === username.toLowerCase() || 
+              (user?.username && u.username.toLowerCase() === user.username.toLowerCase()) ||
+              (user?.global_name && u.username.toLowerCase() === user.global_name.toLowerCase())
+            )) return true;
+            if (u.characters && Array.isArray(u.characters)) {
+              return u.characters.some((c: any) => c.ign && (
+                c.ign.toLowerCase() === username.toLowerCase() ||
+                (user?.username && c.ign.toLowerCase() === user.username.toLowerCase()) ||
+                (user?.global_name && c.ign.toLowerCase() === user.global_name.toLowerCase())
+              ));
+            }
+            return false;
+          });
+
+          if (matchedEntry) {
+            userProfile = matchedEntry[1];
+            // Auto-bind to discord snowflake ID for fast future lookups
+            userCharactersStore[discordId] = userProfile;
+            saveRegisteredCharacters();
+          }
+        }
+
         const characters = userProfile?.characters || [];
 
         // Check which characters the user has already signed up with
@@ -638,7 +665,7 @@ async function startServer() {
             }
           ];
 
-          let statusMsg = `👋 <@${discordId}> 歡迎！系統已預先讀取您在網站註冊的 **${characters.length}** 張角色卡。\n`;
+          let statusMsg = `👋 <@${discordId}> 歡迎！系統已辨識您在網站註冊的 **${characters.length}** 張角色卡。\n`;
           if (userSignups.length > 0) {
             statusMsg += `\n📌 **您目前已報名本遠征隊的角色 (${userSignups.length} 隻)**：\n` + 
               userSignups.map(s => `• 🗡️ **${s.ign}** (${s.job} Lv.${s.level || '?'})`).join('\n') +
@@ -669,13 +696,13 @@ async function startServer() {
           });
         }
 
-        // USER HAS NOT REGISTERED CHARACTERS: Give direct Web Link button to register + fallback manual button
+        // USER HAS NOT REGISTERED CHARACTERS: Direct Link Button to web (No manual input)
         const webUrl = raidInfo?.appUrl || (req.headers.origin as string) || (req.get('host') ? `https://${req.get('host')}` : 'https://ais-dev-4ngurwkxlrhrrzz5pek4mo-482405179645.asia-east1.run.app');
         return res.json({
           type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
           data: {
             flags: 64,
-            content: `👋 <@${discordId}> 歡迎！\n您目前尚未在網站註冊專屬出團角色卡。\n\n推薦點擊下方按鈕前往網站建立角色卡，建立後即可在 Discord 享受一鍵下拉報名出團的便利！`,
+            content: `👋 <@${discordId}> 您好！\n您目前尚未在網站註冊專屬出團角色卡。\n\n請點擊下方按鈕前往網站建立角色卡並綁定 Discord，建立後即可在 Discord 享受一鍵下拉報名出團的便利！`,
             components: [
               {
                 type: 1, // Action Row
@@ -683,16 +710,9 @@ async function startServer() {
                   {
                     type: 2, // BUTTON
                     style: 5, // Link Button (Opens URL directly)
-                    label: "🌐 立即開啟網站註冊角色卡",
+                    label: "🌐 點此前往網站註冊角色卡",
                     url: webUrl,
                     emoji: { name: "💳" }
-                  },
-                  {
-                    type: 2,
-                    style: 2, // Secondary
-                    custom_id: `open_modal_btn_${raidId}`,
-                    label: "✍️ 僅本次臨時手動輸入",
-                    emoji: { name: "📝" }
                   }
                 ]
               }
@@ -709,7 +729,7 @@ async function startServer() {
         const bossTitle = raidInfo?.bossName || raidInfo?.title || "遠征隊";
         const webUrl = raidInfo?.appUrl || (req.headers.origin as string) || (req.get('host') ? `https://${req.get('host')}` : 'https://ais-dev-4ngurwkxlrhrrzz5pek4mo-482405179645.asia-east1.run.app');
 
-        if (selectedValue === "open_web_register" || selectedValue === "manual_custom_char") {
+        if (selectedValue === "open_web_register") {
           return res.json({
             type: 7, // UPDATE_MESSAGE
             data: {
@@ -724,13 +744,6 @@ async function startServer() {
                       label: "🚀 點此開啟網站註冊角色卡",
                       url: webUrl,
                       emoji: { name: "🌐" }
-                    },
-                    {
-                      type: 2,
-                      style: 2, // Secondary
-                      custom_id: `open_modal_btn_${raidId}`,
-                      label: "✍️ 快速手動輸入報名",
-                      emoji: { name: "📝" }
                     }
                   ]
                 }
@@ -768,6 +781,7 @@ async function startServer() {
             level: selectedChar.level || 120,
             memo: selectedChar.memo || "",
             vote: "yes",
+            votes: { 0: "yes", interest: "yes" },
             signedUpAt: new Date().toISOString()
           };
 
@@ -789,6 +803,8 @@ async function startServer() {
               job: selectedChar.job,
               level: selectedChar.level || 120,
               memo: selectedChar.memo || "",
+              vote: "yes",
+              votes: { 0: "yes", interest: "yes" },
               discord: { id: discordId, username, avatar }
             };
             if (vIdx >= 0) {
@@ -808,7 +824,7 @@ async function startServer() {
           return res.json({
             type: 7, // UPDATE_MESSAGE
             data: {
-              content: `🎉 **角色卡報名成功！**\n\n已成功為您登記出團角色卡：\n🗡️ **【${selectedChar.ign}】** (${selectedChar.job} Lv.${selectedChar.level || 120})\n🤖 **Discord 帳號**: <@${discordId}>\n\n🟢 **出團意願已登記為「可以配合」！**\n*(目前您已以此帳號報名 ${allUserSignups.length} 隻角色：${allUserSignups.map(s => s.ign).join(', ')})*\n\n💡 提示：若需再加報其他角色，可再次點擊「🙋 快速報名 / 選擇角色卡」選擇其他卡片！`,
+              content: `🎉 **角色卡報名成功！**\n\n已成功為您登記出團角色卡：\n🗡️ **【${selectedChar.ign}】** (${selectedChar.job} Lv.${selectedChar.level || 120})\n🤖 **Discord 帳號**: <@${discordId}>\n\n🟢 **出團意願已登記為「可以配合」！** (已同步更新至網站突襲意願與名單)\n*(目前您已以此帳號報名 ${allUserSignups.length} 隻角色：${allUserSignups.map(s => s.ign).join(', ')})*\n\n💡 提示：若需再加報其他角色，可再次點擊「🙋 快速報名 / 選擇角色卡」選擇其他卡片！`,
               components: []
             }
           });
