@@ -31,6 +31,7 @@ import { AdminConsoleModal } from './components/AdminConsole';
 import SynergyAnalyzer from './components/SynergyAnalyzer';
 import FortuneDashboard from './components/FortuneDashboard';
 import DiscordThreadModal from './components/DiscordThreadModal';
+import InteractiveCardModal from './components/InteractiveCardModal';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { DropTableSection } from './components/DropTableSection';
 import { MobileNavDrawer } from './components/MobileNavDrawer';
@@ -140,6 +141,9 @@ export default function App() {
   const [threadMembers, setThreadMembers] = useState<any[]>([]);
   const [isSendingThread, setIsSendingThread] = useState(false);
 
+  // Discord Interactive Card Modal State
+  const [showInteractiveModal, setShowInteractiveModal] = useState(false);
+
   // Creation State
   const [isCreating, setIsCreating] = useState(false);
   const [newRaid, setNewRaid] = useState({
@@ -230,7 +234,15 @@ export default function App() {
     const configRef = doc(db, `artifacts/${appId}/public/data/discord/config`);
     const unsubscribe = onSnapshot(configRef, (docSnap) => {
       if (docSnap.exists()) {
-        setDiscordConfig(docSnap.data() as DiscordConfig);
+        const data = docSnap.data() as DiscordConfig;
+        setDiscordConfig(data);
+        if (data.publicKey) {
+          fetch('/api/discord/set-public-key', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ publicKey: data.publicKey })
+          }).catch(e => console.warn("Failed to sync DC key:", e));
+        }
       } else {
         const defaultConf: DiscordConfig = {
           clientId: '1508031863263068190',
@@ -1008,6 +1020,125 @@ export default function App() {
     }
   };
 
+  const handleOpenInteractiveCardModal = (raid: any) => {
+    if (!discordConfig?.botToken) {
+      showToast("⚠️ 請先在管理者後台配置 Discord Bot Token 密鑰！", "error");
+      return;
+    }
+    setShowInteractiveModal(true);
+  };
+
+  const executePostInteractiveCard = async (targetChannelId: string, customNote?: string) => {
+    const raid = activeRaid;
+    if (!raid || !discordConfig?.botToken) return;
+
+    const raidBoss = bosses.find(b => b.id === raid.bossId);
+    const participants = raid.participants || [];
+    const activeMembers = participants.filter((p: any) => !p.isPlaceholder && p.party !== 'reserve');
+
+    const party1 = participants.filter((p: any) => p.party === '1');
+    const party2 = participants.filter((p: any) => p.party === '2');
+    const party3 = participants.filter((p: any) => p.party === '3');
+    
+    let partyMembersSummary = "";
+    const formatP = (list: any[], name: string) => {
+      if (list.length === 0) return `${name}: *(暫無隊員)*\n`;
+      return `${name}: ` + list.map(p => `[${p.job}] ${p.ign}`).join(" | ") + "\n";
+    };
+
+    partyMembersSummary += formatP(party1, "🔵 一隊");
+    if ((raid.partyCount || 1) >= 2) partyMembersSummary += formatP(party2, "🟢 二隊");
+    if ((raid.partyCount || 1) >= 3) partyMembersSummary += formatP(party3, "🟣 三隊");
+
+    setIsSendingThread(true);
+    try {
+      const response = await fetch('/api/discord/post-interactive-card', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          botToken: discordConfig.botToken,
+          channelId: targetChannelId,
+          raidId: raid.id,
+          title: `⚔️ 【${raidBoss?.name.split(' (')[0] || raid.title}】互動招募中！`,
+          bossName: raidBoss?.name.split(' (')[0] || raid.title,
+          targetCount: raidBoss?.maxPlayers || 12,
+          currentCount: activeMembers.length,
+          leaderName: raid.creatorIgn || '團長',
+          partyMembersSummary,
+          customNote,
+          appUrl: window.location.href
+        })
+      });
+
+      if (response.ok) {
+        showToast("🎉 成功向 Discord 頻道發送【🙋 快速報名】互動卡片與按鈕！", "success");
+        setShowInteractiveModal(false);
+      } else {
+        const errData = await response.json();
+        throw new Error(errData.error || "發送互動卡片失敗");
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(`❌ 發送失敗：${err.message}`, "error");
+    } finally {
+      setIsSendingThread(false);
+    }
+  };
+
+  const handleSyncDiscordSignups = async (raidId: string) => {
+    try {
+      const response = await fetch(`/api/discord/signups/${raidId}`);
+      if (!response.ok) throw new Error("無法取得 Discord 報名資料");
+      
+      const data = await response.json();
+      const signups = data.signups || [];
+
+      if (signups.length === 0) {
+        showToast("ℹ️ 目前 Discord 頻道尚無新傳入的互動卡片報名紀錄。");
+        return;
+      }
+
+      const raid = raids.find(r => r.id === raidId);
+      if (!raid) return;
+
+      const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
+      let updatedVotes = [...(raid.votes || [])];
+      let addedCount = 0;
+
+      for (const signup of signups) {
+        const existingVoteIdx = updatedVotes.findIndex(v => v.discordId === signup.discordId || (v.discord && v.discord.id === signup.discordId));
+        
+        const voteRecord = {
+          userId: `dc_${signup.discordId}`,
+          discordId: signup.discordId,
+          ign: signup.ign,
+          job: signup.job,
+          level: Number(signup.level) || 120,
+          memo: `Discord 卡片報名 (@${signup.username})`,
+          discord: {
+            id: signup.discordId,
+            username: signup.username,
+            avatar: signup.avatar
+          },
+          votes: { 0: 'yes' }
+        };
+
+        if (existingVoteIdx >= 0) {
+          updatedVotes[existingVoteIdx] = { ...updatedVotes[existingVoteIdx], ...voteRecord };
+        } else {
+          updatedVotes.push(voteRecord);
+          addedCount++;
+        }
+      }
+
+      await updateDoc(raidRef, { votes: updatedVotes });
+      showToast(`🔄 成功同步 ${signups.length} 筆 Discord 卡片報名紀錄（新增 ${addedCount} 人）！`, "success");
+    } catch (err: any) {
+      console.error(err);
+      showToast(`❌ 同步失敗: ${err.message}`, "error");
+    }
+  };
+
   const copyGroupFormat = (raid: any) => {
     const raidBoss = bosses.find(b => b.id === raid.bossId);
     let bestTimeText = "待定";
@@ -1738,6 +1869,28 @@ export default function App() {
                       >
                         📋 複製公會排班表
                       </button>
+
+                      {isCreator && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenInteractiveCardModal(activeRaid)}
+                            className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-extrabold px-4 py-2.5 rounded-xl transition text-xs md:text-sm shadow-md flex items-center space-x-1.5"
+                            title="發送包含 🙋 快速報名 / 取消報名 按鈕的 Discord 卡片"
+                          >
+                            <span>🤖 發送 DC 互動招募卡片</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleSyncDiscordSignups(activeRaid.id)}
+                            className="bg-emerald-700 hover:bg-emerald-600 text-white font-extrabold px-3.5 py-2.5 rounded-xl transition text-xs md:text-sm shadow-sm flex items-center space-x-1.5"
+                            title="抓取 Discord 頻道中點擊按鈕報名的最新成員資料"
+                          >
+                            <span>🔄 同步 DC 報名</span>
+                          </button>
+                        </>
+                      )}
 
                       {isCreator && discordConfig?.webhookUrl && (
                         <button
@@ -2960,6 +3113,18 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Interactive Card Dispatch Modal */}
+      <InteractiveCardModal
+        isOpen={showInteractiveModal}
+        onClose={() => setShowInteractiveModal(false)}
+        raid={activeRaid}
+        bossName={bosses.find(b => b.id === activeRaid?.bossId)?.name.split(' (')[0] || activeRaid?.title || '遠征隊'}
+        discordConfig={discordConfig}
+        onSend={executePostInteractiveCard}
+        isSending={isSendingThread}
+        showToast={showToast}
+      />
 
       {/* PWA Install Guide Modal */}
       <PWAInstallModal

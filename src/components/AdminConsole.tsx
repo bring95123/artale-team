@@ -112,6 +112,19 @@ export function AdminConsoleModal({
     try {
       const cfgRef = doc(db, `artifacts/${appId}/public/data/discord/config`);
       await setDoc(cfgRef, discordConfig);
+      
+      if (discordConfig?.publicKey) {
+        try {
+          await fetch('/api/discord/set-public-key', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ publicKey: discordConfig.publicKey })
+          });
+        } catch (syncErr) {
+          console.warn("Failed to sync public key to backend:", syncErr);
+        }
+      }
+
       showToast("Discord 整合設定已儲存並全面啟用！");
     } catch (err: any) {
       showToast(`儲存失敗: ${err.message}`, "error");
@@ -331,6 +344,48 @@ export function AdminConsoleModal({
                   
                   <div className="space-y-2.5 bg-white p-3 rounded-xl border border-slate-200">
                     <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[10px] text-slate-600 font-bold">
+                          🔑 應用程式公開金鑰 (Public Key) <span className="text-amber-600">（必填以通過 Discord 驗證）</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!discordConfig?.publicKey?.trim()) {
+                              showToast("請先輸入 Public Key", "error");
+                              return;
+                            }
+                            try {
+                              const res = await fetch('/api/discord/set-public-key', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ publicKey: discordConfig.publicKey.trim() })
+                              });
+                              const data = await res.json();
+                              if (data.success) {
+                                showToast("✅ 公開金鑰已立即同步至伺服器！現在可前往 Discord 儲存 URL。");
+                              }
+                            } catch (e: any) {
+                              showToast(`同步失敗: ${e.message}`, "error");
+                            }
+                          }}
+                          className="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-bold transition-colors"
+                        >
+                          ⚡ 立即同步到伺服器
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="請貼上 Discord Portal ➔ 一般資訊 中的「公開金鑰 (Public Key)」 (64位字元)"
+                        value={discordConfig?.publicKey || ''}
+                        onChange={(e) => setDiscordConfig({ ...discordConfig, publicKey: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 focus:outline-none font-mono"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        貼上後點擊上方「⚡ 立即同步到伺服器」或左下角「💾 儲存設定」，即可立即在 Discord Portal 儲存 Interactions Endpoint URL。
+                      </p>
+                    </div>
+                    <div>
                       <label className="block text-[10px] text-slate-600 mb-1 font-bold">小助手 Bot Token</label>
                       <input
                         type="password"
@@ -344,11 +399,18 @@ export function AdminConsoleModal({
                       <label className="block text-[10px] text-slate-600 mb-1 font-bold">默認文字/論壇頻道 ID (Default Channel ID)</label>
                       <input
                         type="text"
-                        placeholder="開起 DC 開發者模式，在頻道右鍵複製 ID"
+                        placeholder="開啟 DC 開發者模式，在頻道右鍵複製 ID"
                         value={discordConfig?.botChannelId || ''}
                         onChange={(e) => setDiscordConfig({ ...discordConfig, botChannelId: e.target.value })}
                         className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 focus:outline-none font-mono"
                       />
+                    </div>
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-2.5 text-[10px] text-indigo-900 space-y-1">
+                      <p className="font-extrabold text-indigo-700">⚡ Discord 互動按鈕報名 (Interactions URL):</p>
+                      <p className="text-slate-600">如需在 DC 點按鈕彈出報名選單，請至 Discord Developer Portal ➔ General Information ➔ 填入：</p>
+                      <code className="block bg-white p-1.5 rounded border border-indigo-200 font-mono text-indigo-700 select-all font-bold">
+                        {typeof window !== 'undefined' ? `${window.location.origin}/api/discord/interactions` : '/api/discord/interactions'}
+                      </code>
                     </div>
                   </div>
                 </div>

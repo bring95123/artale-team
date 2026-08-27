@@ -103,6 +103,7 @@ export interface DiscordConfig {
   webhooks?: WebhookChannel[];
   botToken?: string;
   botChannelId?: string;
+  publicKey?: string;
 }
 
 export interface GachaFortune {
