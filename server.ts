@@ -602,7 +602,7 @@ async function startServer() {
         ? `https://cdn.discordapp.com/avatars/${discordId}/${user.avatar}.png` 
         : `https://cdn.discordapp.com/embed/avatars/${Number(discordId) % 5}.png`;
 
-      // 1. Click: [🙋 快速報名 / 變更職業]
+      // 1. Click: [🙋 快速報名 / 選擇角色卡]
       if (customId.startsWith("party_signup_")) {
         const raidId = customId.replace("party_signup_", "");
         const raidInfo = raidStatusStore[raidId];
@@ -612,28 +612,45 @@ async function startServer() {
         const userProfile = userCharactersStore[discordId];
         const characters = userProfile?.characters || [];
 
+        // Check which characters the user has already signed up with
+        const userSignups = (discordSignupsStore[raidId] || []).filter(s => s.discordId === discordId);
+        const signedUpIgns = new Set(userSignups.map(s => s.ign));
+
         if (characters.length > 0) {
           // USER HAS REGISTERED CHARACTERS: Send Ephemeral Select Menu with character cards!
+          // Build options for all characters (allows multiple characters to sign up)
           const options = [
-            ...characters.slice(0, 24).map((c: any, idx: number) => ({
-              label: `${c.ign} (${c.job})`.slice(0, 100),
-              value: `char_${idx}`,
-              description: `等級 Lv.${c.level || 120} ${c.memo ? `• ${c.memo}` : ''}`.slice(0, 100),
-              emoji: { name: "⚔️" }
-            })),
+            ...characters.slice(0, 24).map((c: any, idx: number) => {
+              const isSignedUp = signedUpIgns.has(c.ign);
+              return {
+                label: `${isSignedUp ? '✅ ' : ''}${c.ign} (${c.job})`.slice(0, 100),
+                value: `char_${idx}`,
+                description: `${isSignedUp ? '[已登記報名] ' : ''}等級 Lv.${c.level || 120} ${c.memo ? `• ${c.memo}` : ''}`.slice(0, 100),
+                emoji: { name: isSignedUp ? "✅" : "⚔️" }
+              };
+            }),
             {
-              label: "✍️ 手動輸入其他角色 (未在網站登記)",
+              label: "➕ 登記新角色卡並報名 (手動新增)",
               value: "manual_custom_char",
-              description: "自行輸入自訂暱稱與職業",
+              description: "填寫新角色的 IGN 與職業，系統將自動建卡並報名",
               emoji: { name: "📝" }
             }
           ];
+
+          let statusMsg = `👋 <@${discordId}> 歡迎！系統已預先讀取您在網站註冊的 **${characters.length}** 張角色卡。\n`;
+          if (userSignups.length > 0) {
+            statusMsg += `\n📌 **您目前已報名本遠征隊的角色 (${userSignups.length} 隻)**：\n` + 
+              userSignups.map(s => `• 🗡️ **${s.ign}** (${s.job} Lv.${s.level || '?'})`).join('\n') +
+              `\n\n*(💡 本系統支援多角色同時報名，您可直接點選下方其他角色卡繼續報名，或點擊「❌ 取消報名」依角色卡個別取消)*`;
+          } else {
+            statusMsg += `\n請在下方選單中選擇要參加 **【${bossTitle}】** 的角色卡 (支援多角色同時報名)：`;
+          }
 
           return res.json({
             type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
             data: {
               flags: 64, // Ephemeral (only clicking user can see)
-              content: `👋 <@${discordId}> 歡迎！系統已為您預先讀取在網站上註冊的 **${characters.length}** 張角色卡。\n\n請在下方選單中選擇要以哪位角色參加 **【${bossTitle}】**：`,
+              content: statusMsg,
               components: [
                 {
                   type: 1, // Action Row
@@ -641,7 +658,7 @@ async function startServer() {
                     {
                       type: 3, // String Select Menu
                       custom_id: `select_char_${raidId}`,
-                      placeholder: "🎮 點擊選擇出團角色卡...",
+                      placeholder: "🎮 點擊選擇出團角色卡 (可多選報名)...",
                       options
                     }
                   ]
@@ -718,17 +735,17 @@ async function startServer() {
           return res.json({
             type: 7, // UPDATE_MESSAGE
             data: {
-              content: `✍️ **手動輸入角色報名**\n請點擊下方按鈕開啟自訂角色填寫表單：`,
+              content: `➕ **登記新角色卡並立即報名**\n\n點擊下方按鈕填寫您的 **遊戲暱稱 (IGN)**、**職業** 與 **等級**。\n填寫後系統將會：\n1️⃣ 立即將此角色報名至 **【${bossTitle}】**\n2️⃣ **自動建立並永久儲存為您的專屬角色卡**，下次報名即可直接在選單一鍵點選！`,
               components: [
                 {
                   type: 1,
                   components: [
                     {
                       type: 2, // BUTTON
-                      style: 1,
+                      style: 1, // Primary (Blurple)
                       custom_id: `open_modal_btn_${raidId}`,
-                      label: "📝 開啟填寫表單",
-                      emoji: { name: "📝" }
+                      label: "📝 開啟表單：登記新角色卡並報名",
+                      emoji: { name: "🎮" }
                     }
                   ]
                 }
@@ -752,7 +769,7 @@ async function startServer() {
             });
           }
 
-          // Record signup in store
+          // Record signup in store (keyed by discordId + ign to allow multiple character registrations)
           if (!discordSignupsStore[raidId]) {
             discordSignupsStore[raidId] = [];
           }
@@ -769,7 +786,7 @@ async function startServer() {
             signedUpAt: new Date().toISOString()
           };
 
-          const existingIdx = discordSignupsStore[raidId].findIndex(s => s.discordId === discordId);
+          const existingIdx = discordSignupsStore[raidId].findIndex(s => s.discordId === discordId && s.ign === selectedChar.ign);
           if (existingIdx >= 0) {
             discordSignupsStore[raidId][existingIdx] = signupRecord;
           } else {
@@ -779,9 +796,9 @@ async function startServer() {
           // Update raidStatusStore yesVotes
           if (raidStatusStore[raidId]) {
             const currentYes = raidStatusStore[raidId].yesVotes || [];
-            const vIdx = currentYes.findIndex((v: any) => v.discordId === discordId);
+            const vIdx = currentYes.findIndex((v: any) => v.discordId === discordId && v.ign === selectedChar.ign);
             const voterObj = {
-              userId: `dc_${discordId}`,
+              userId: `dc_${discordId}_${selectedChar.ign}`,
               discordId,
               ign: selectedChar.ign,
               job: selectedChar.job,
@@ -795,15 +812,18 @@ async function startServer() {
               currentYes.push(voterObj);
             }
             raidStatusStore[raidId].yesVotes = currentYes;
-            // Remove from noVotes if present
-            raidStatusStore[raidId].noVotes = (raidStatusStore[raidId].noVotes || []).filter((v: any) => v.discordId !== discordId);
+            // Remove from noVotes if present for this character
+            raidStatusStore[raidId].noVotes = (raidStatusStore[raidId].noVotes || []).filter((v: any) => !(v.discordId === discordId && v.ign === selectedChar.ign));
             saveRaidStatuses();
           }
+
+          // Get updated signups for this user
+          const allUserSignups = discordSignupsStore[raidId].filter(s => s.discordId === discordId);
 
           return res.json({
             type: 7, // UPDATE_MESSAGE
             data: {
-              content: `🎉 **報名成功！**\n\n已成功為您選擇角色卡：\n🗡️ **【${selectedChar.ign}】** (${selectedChar.job} Lv.${selectedChar.level || 120})\n🤖 **Discord**: <@${discordId}>\n\n🟢 **出團意願已登記為「可以配合」！**\n團長可在網站直接為您排班並錄取至小隊。如欲更換角色可再次點擊「🙋 快速報名」按鈕切換。`,
+              content: `🎉 **角色卡報名成功！**\n\n已成功為您登記出團角色卡：\n🗡️ **【${selectedChar.ign}】** (${selectedChar.job} Lv.${selectedChar.level || 120})\n🤖 **Discord 帳號**: <@${discordId}>\n\n🟢 **出團意願已登記為「可以配合」！**\n*(目前您已以此帳號報名 ${allUserSignups.length} 隻角色：${allUserSignups.map(s => s.ign).join(', ')})*\n\n💡 提示：若需再加報其他角色，可再次點擊「🙋 快速報名 / 選擇角色卡」選擇其他卡片！`,
               components: []
             }
           });
@@ -868,57 +888,180 @@ async function startServer() {
         });
       }
 
-      // 4. Click: [❌ 取消報名]
+      // 4. Click: [❌ 取消報名] - Support individual character cancellation or menu if multiple
       if (customId.startsWith("party_cancel_")) {
         const raidId = customId.replace("party_cancel_", "");
 
-        if (discordSignupsStore[raidId]) {
-          discordSignupsStore[raidId] = discordSignupsStore[raidId].filter(s => s.discordId !== discordId);
+        // Find all signups by this discord user for this raid
+        const userSignups = (discordSignupsStore[raidId] || []).filter(s => s.discordId === discordId);
+
+        if (userSignups.length === 0) {
+          return res.json({
+            type: 4,
+            data: {
+              content: `ℹ️ <@${discordId}> 您目前尚未報名此遠征隊，無需取消。`,
+              flags: 64
+            }
+          });
         }
 
-        if (raidStatusStore[raidId]) {
-          raidStatusStore[raidId].yesVotes = (raidStatusStore[raidId].yesVotes || []).filter((v: any) => v.discordId !== discordId);
-          // Add to noVotes
-          const currentNo = raidStatusStore[raidId].noVotes || [];
-          if (!currentNo.some((v: any) => v.discordId === discordId)) {
-            currentNo.push({
-              userId: `dc_${discordId}`,
-              discordId,
-              ign: username,
-              job: "取消參加",
-              level: "",
-              discord: { id: discordId, username, avatar }
-            });
-            raidStatusStore[raidId].noVotes = currentNo;
+        if (userSignups.length === 1) {
+          // Single character: cancel directly
+          const targetChar = userSignups[0];
+          discordSignupsStore[raidId] = (discordSignupsStore[raidId] || []).filter(s => !(s.discordId === discordId && s.ign === targetChar.ign));
+
+          if (raidStatusStore[raidId]) {
+            raidStatusStore[raidId].yesVotes = (raidStatusStore[raidId].yesVotes || []).filter((v: any) => !(v.discordId === discordId && v.ign === targetChar.ign));
+            const currentNo = raidStatusStore[raidId].noVotes || [];
+            if (!currentNo.some((v: any) => v.discordId === discordId && v.ign === targetChar.ign)) {
+              currentNo.push({
+                userId: `dc_${discordId}_${targetChar.ign}`,
+                discordId,
+                ign: targetChar.ign,
+                job: targetChar.job || "取消參加",
+                level: targetChar.level || "",
+                discord: { id: discordId, username, avatar }
+              });
+              raidStatusStore[raidId].noVotes = currentNo;
+            }
+            saveRaidStatuses();
           }
-          saveRaidStatuses();
+
+          return res.json({
+            type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
+            data: {
+              content: `❌ <@${discordId}> 已取消角色 **【${targetChar.ign}】** (${targetChar.job}) 的報名！`,
+              flags: 64
+            }
+          });
         }
+
+        // Multiple characters signed up: provide menu to select which character card to cancel, or cancel all
+        const cancelOptions = [
+          ...userSignups.map((s, idx) => ({
+            label: `❌ 取消：${s.ign} (${s.job} Lv.${s.level || '?'})`.slice(0, 100),
+            value: `cancel_char_${idx}_${s.ign}`.slice(0, 100),
+            description: `僅取消此角色卡的報名`,
+            emoji: { name: "🗑️" }
+          })),
+          {
+            label: `💥 取消此帳號名下「全部角色」(${userSignups.length} 隻)`,
+            value: `cancel_all_chars`,
+            description: `全部取消報名並標示為不克參加`,
+            emoji: { name: "⚠️" }
+          }
+        ];
 
         return res.json({
-          type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
+          type: 4,
           data: {
-            content: `❌ <@${discordId}> 已取消報名！您的出團意願已更新為「不克參加」。`,
-            flags: 64
+            flags: 64,
+            content: `❓ <@${discordId}> 您目前已報名了 **${userSignups.length}** 位角色，請選擇您要取消哪一張角色卡的報名：`,
+            components: [
+              {
+                type: 1,
+                components: [
+                  {
+                    type: 3,
+                    custom_id: `select_cancel_char_${raidId}`,
+                    placeholder: "🎯 選擇要取消報名的角色卡...",
+                    options: cancelOptions
+                  }
+                ]
+              }
+            ]
           }
         });
+      }
+
+      // Handle selection from cancel menu
+      if (customId.startsWith("select_cancel_char_")) {
+        const raidId = customId.replace("select_cancel_char_", "");
+        const selectedValue = interaction.data?.values?.[0] || "";
+
+        if (selectedValue === "cancel_all_chars") {
+          const removed = (discordSignupsStore[raidId] || []).filter(s => s.discordId === discordId);
+          discordSignupsStore[raidId] = (discordSignupsStore[raidId] || []).filter(s => s.discordId !== discordId);
+
+          if (raidStatusStore[raidId]) {
+            raidStatusStore[raidId].yesVotes = (raidStatusStore[raidId].yesVotes || []).filter((v: any) => v.discordId !== discordId);
+            const currentNo = raidStatusStore[raidId].noVotes || [];
+            for (const r of removed) {
+              if (!currentNo.some((v: any) => v.discordId === discordId && v.ign === r.ign)) {
+                currentNo.push({
+                  userId: `dc_${discordId}_${r.ign}`,
+                  discordId,
+                  ign: r.ign,
+                  job: r.job || "取消參加",
+                  level: r.level || "",
+                  discord: { id: discordId, username, avatar }
+                });
+              }
+            }
+            raidStatusStore[raidId].noVotes = currentNo;
+            saveRaidStatuses();
+          }
+
+          return res.json({
+            type: 7,
+            data: {
+              content: `❌ <@${discordId}> 已取消全部 (${removed.length} 隻) 角色的報名！`,
+              components: []
+            }
+          });
+        }
+
+        if (selectedValue.startsWith("cancel_char_")) {
+          // Format: cancel_char_${idx}_${ign}
+          const targetIgn = selectedValue.split("_").slice(3).join("_");
+          const targetChar = (discordSignupsStore[raidId] || []).find(s => s.discordId === discordId && s.ign === targetIgn);
+
+          discordSignupsStore[raidId] = (discordSignupsStore[raidId] || []).filter(s => !(s.discordId === discordId && s.ign === targetIgn));
+
+          if (raidStatusStore[raidId]) {
+            raidStatusStore[raidId].yesVotes = (raidStatusStore[raidId].yesVotes || []).filter((v: any) => !(v.discordId === discordId && v.ign === targetIgn));
+            const currentNo = raidStatusStore[raidId].noVotes || [];
+            if (!currentNo.some((v: any) => v.discordId === discordId && v.ign === targetIgn)) {
+              currentNo.push({
+                userId: `dc_${discordId}_${targetIgn}`,
+                discordId,
+                ign: targetIgn,
+                job: targetChar?.job || "取消參加",
+                level: targetChar?.level || "",
+                discord: { id: discordId, username, avatar }
+              });
+              raidStatusStore[raidId].noVotes = currentNo;
+            }
+            saveRaidStatuses();
+          }
+
+          const remainingSignups = (discordSignupsStore[raidId] || []).filter(s => s.discordId === discordId);
+
+          return res.json({
+            type: 7,
+            data: {
+              content: `❌ <@${discordId}> 已成功個別取消角色 **【${targetIgn}】** 的報名！\n${remainingSignups.length > 0 ? `\n📌 您仍有 ${remainingSignups.length} 隻角色保留在遠征隊中：\n` + remainingSignups.map(s => `• 🗡️ **${s.ign}** (${s.job})`).join('\n') : ''}`,
+              components: []
+            }
+          });
+        }
       }
 
       // 5. Click: [📋 隊伍現況] - Figure 2 full status display
       if (customId.startsWith("party_status_")) {
         const raidId = customId.replace("party_status_", "");
         const status = raidStatusStore[raidId] || {};
-        const signups = discordSignupsStore[raidId] || [];
 
-        // Combine yesVotes from status and recent signups
+        // Combine yesVotes from status
         const yesList = status.yesVotes || [];
         const noList = status.noVotes || [];
 
         const yesText = yesList.length > 0
-          ? yesList.map((v: any) => `• **${v.ign}** (${v.job} Lv.${v.level || '?'}) ${v.discordId ? `<@${v.discordId}>` : ''}`).join('\n')
+          ? yesList.map((v: any) => `• **${v.ign}** (${v.job || '未知'} Lv.${v.level || '?'}) ${v.discordId ? `<@${v.discordId}>` : ''}`).join('\n')
           : "*(目前無隊員登記)*";
 
         const noText = noList.length > 0
-          ? noList.map((v: any) => `• **${v.ign}** (${v.job} Lv.${v.level || '?'}) ${v.discordId ? `<@${v.discordId}>` : ''}`).join('\n')
+          ? noList.map((v: any) => `• **${v.ign}** (${v.job || '未知'} Lv.${v.level || '?'}) ${v.discordId ? `<@${v.discordId}>` : ''}`).join('\n')
           : "*(目前無隊員登記)*";
 
         let partyRoster = "";
@@ -928,6 +1071,9 @@ async function startServer() {
         }
         if ((status.partyCount || 1) >= 3) {
           partyRoster += `🟣 **三隊**：${status.party3 && status.party3.length > 0 ? status.party3.map((p: any) => `[${p.job}] ${p.ign}`).join(' | ') : '*(暫無隊員)*'}\n`;
+        }
+        if (status.reserves && status.reserves.length > 0) {
+          partyRoster += `🟡 **候補名單**：${status.reserves.map((p: any) => `[${p.job}] ${p.ign}`).join(' | ')}\n`;
         }
 
         const fullStatusContent = [
@@ -990,19 +1136,47 @@ async function startServer() {
           signedUpAt: new Date().toISOString()
         };
 
-        const existingIdx = discordSignupsStore[raidId].findIndex(s => s.discordId === discordId);
+        const existingIdx = discordSignupsStore[raidId].findIndex(s => s.discordId === discordId && s.ign === ign);
         if (existingIdx >= 0) {
           discordSignupsStore[raidId][existingIdx] = signupRecord;
         } else {
           discordSignupsStore[raidId].push(signupRecord);
         }
 
+        if (!userCharactersStore[discordId]) {
+          userCharactersStore[discordId] = {
+            username,
+            avatar,
+            characters: [],
+            activeCharacterIndex: 0
+          };
+        }
+        // If character not in list, add to registered character list
+        const existingCharIdx = userCharactersStore[discordId].characters.findIndex((c: any) => c.ign === ign);
+        if (existingCharIdx >= 0) {
+          userCharactersStore[discordId].characters[existingCharIdx] = {
+            ...userCharactersStore[discordId].characters[existingCharIdx],
+            ign,
+            job,
+            level: parseInt(level, 10) || 120
+          };
+        } else {
+          userCharactersStore[discordId].characters.push({
+            ign,
+            job,
+            level: parseInt(level, 10) || 120,
+            memo: "Discord 報名建立",
+            isMain: userCharactersStore[discordId].characters.length === 0
+          });
+        }
+        saveRegisteredCharacters();
+
         // Update raidStatusStore
         if (raidStatusStore[raidId]) {
           const currentYes = raidStatusStore[raidId].yesVotes || [];
-          const vIdx = currentYes.findIndex((v: any) => v.discordId === discordId);
+          const vIdx = currentYes.findIndex((v: any) => v.discordId === discordId && v.ign === ign);
           const voterObj = {
-            userId: `dc_${discordId}`,
+            userId: `dc_${discordId}_${ign}`,
             discordId,
             ign,
             job,
@@ -1016,14 +1190,16 @@ async function startServer() {
             currentYes.push(voterObj);
           }
           raidStatusStore[raidId].yesVotes = currentYes;
-          raidStatusStore[raidId].noVotes = (raidStatusStore[raidId].noVotes || []).filter((v: any) => v.discordId !== discordId);
+          raidStatusStore[raidId].noVotes = (raidStatusStore[raidId].noVotes || []).filter((v: any) => !(v.discordId === discordId && v.ign === ign));
           saveRaidStatuses();
         }
+
+        const allUserSignups = discordSignupsStore[raidId].filter(s => s.discordId === discordId);
 
         return res.json({
           type: 4,
           data: {
-            content: `🎉 **手動報名成功！**\n👤 **IGN**: \`${ign}\` \n🗡️ **職業**: \`${job}\` \n⭐ **等級**: \`Lv.${level}\` \n🤖 **Discord 帳號**: <@${discordId}>\n\n🟢 **出團意願已登記為「可以配合」！**\n*(💡 提示：您也可以登入網站設定您的專屬角色卡，下次點擊報名就能直接一鍵下拉選擇！)*`,
+            content: `🎉 **手動角色報名與角色卡登記成功！**\n\n🗡️ **角色 (IGN)**: \`${ign}\` \n🛡️ **職業**: \`${job}\` \n⭐ **等級**: \`Lv.${level}\` \n🤖 **Discord 帳號**: <@${discordId}>\n\n🟢 **出團意願已登記為「可以配合」！**\n💳 **系統已自動為您將此角色保存為專屬角色卡**，下次報名任何遠征隊時即可直接在選單中一鍵選擇！\n*(目前此帳號已登記出團 ${allUserSignups.length} 隻角色)*`,
             flags: 64
           }
         });
