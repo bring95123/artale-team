@@ -1412,20 +1412,13 @@ export default function App() {
         }
       }
 
-      // 3. Remove votes that were explicitly cancelled on Discord bot OR removed from active signups
+      // 3. Remove votes ONLY if they were explicitly marked as cancelled on Discord bot
       const filteredVotes = uniqueVotes.filter(v => {
         const vIgnKey = (v.ign || '').trim().toLowerCase();
         if (!vIgnKey) return true;
 
-        // If explicitly marked as cancelled / no-vote on server
+        // If explicitly marked as cancelled / no-vote on Discord
         if (cancelledIgns.has(vIgnKey)) {
-          hasChanges = true;
-          return false;
-        }
-
-        // If originated from Discord bot / synced with Discord, but no longer in active signups
-        const isFromDiscord = v.userId?.startsWith('dc_') || (v.memo && v.memo.includes('Discord 卡片報名')) || v.discordId || v.discord?.id;
-        if (isFromDiscord && !activeSignupIgns.has(vIgnKey) && (noVotes.length > 0 || signups.length > 0)) {
           hasChanges = true;
           return false;
         }

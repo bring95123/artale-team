@@ -895,18 +895,13 @@ async function startServer() {
           }
         }
 
-        // 3. Remove votes that were explicitly cancelled on Discord bot OR removed from active signups
+        // 3. Remove votes ONLY if they were explicitly marked as cancelled on Discord bot
         const filteredVotes = uniqueVotes.filter(v => {
           const vIgnKey = (v.ign || '').trim().toLowerCase();
           if (!vIgnKey) return true;
 
+          // If explicitly cancelled on Discord bot
           if (cancelledIgns.has(vIgnKey)) {
-            hasChanges = true;
-            return false;
-          }
-
-          const isFromDiscord = v.userId?.startsWith('dc_') || (v.memo && v.memo.includes('Discord 卡片報名')) || v.discordId || v.discord?.id;
-          if (isFromDiscord && !activeSignupIgns.has(vIgnKey) && (noVotes.length > 0 || signups.length > 0)) {
             hasChanges = true;
             return false;
           }
@@ -1126,7 +1121,7 @@ async function startServer() {
     }
   };
 
-  // Debounced wrapper to prevent rate limits and server overload
+  // Debounced wrapper to prevent rate limits and server overload (Asynchronous Non-blocking)
   const updateDiscordCardMessage = async (raidId: string, forceUpdate = false) => {
     if (forceUpdate) {
       if (cardUpdateDebounceTimers[raidId]) {
@@ -1136,16 +1131,13 @@ async function startServer() {
       return executeUpdateDiscordCardMessage(raidId, forceUpdate);
     }
 
-    return new Promise<void>((resolve) => {
-      if (cardUpdateDebounceTimers[raidId]) {
-        clearTimeout(cardUpdateDebounceTimers[raidId]);
-      }
-      cardUpdateDebounceTimers[raidId] = setTimeout(async () => {
-        delete cardUpdateDebounceTimers[raidId];
-        await executeUpdateDiscordCardMessage(raidId, forceUpdate).catch(() => {});
-        resolve();
-      }, 1500); // Debounce updates for 1.5 seconds to batch multiple quick clicks
-    });
+    if (cardUpdateDebounceTimers[raidId]) {
+      clearTimeout(cardUpdateDebounceTimers[raidId]);
+    }
+    cardUpdateDebounceTimers[raidId] = setTimeout(() => {
+      delete cardUpdateDebounceTimers[raidId];
+      executeUpdateDiscordCardMessage(raidId, forceUpdate).catch(() => {});
+    }, 800); // 800ms debounce batching (snappy and prevents Discord 429)
   };
 
   // 🔄 伺服器端：每分鐘 (60 秒) 自動定時輪詢刷新所有已發送的 Discord 招募卡片
@@ -1689,6 +1681,14 @@ async function startServer() {
             }
           });
         }
+
+        return respondAndAutoDelete({
+          type: 7,
+          data: {
+            content: `ℹ️ <@${discordId}> 未選取有效的角色卡，請重新點選報名按鈕進行選擇。`,
+            components: []
+          }
+        });
       }
 
       // 3. Click: [📝 開啟填寫表單] (from manual input option)
