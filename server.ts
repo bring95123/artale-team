@@ -5,6 +5,8 @@ import multer from "multer";
 import fs from "fs";
 import { verifyKey } from "discord-interactions";
 import { WebSocket } from "ws";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getFirestore, doc, getDoc, updateDoc } from "firebase/firestore";
 
 async function startServer() {
   const app = express();
@@ -511,6 +513,30 @@ async function startServer() {
   const raidStatusesFilePath = path.join(uploadRootDir, "raid_statuses.json");
   const keyFilePath = path.join(uploadRootDir, "discord_key.txt");
 
+  // Firebase client initialization on server-side
+  const DEFAULT_FIREBASE_CONFIG = {
+    apiKey: "AIzaSyAQBMRNTYfViM-iPy-nOZs3IdPEQRCQ56w",
+    authDomain: "msw-artale.firebaseapp.com",
+    projectId: "msw-artale",
+    storageBucket: "msw-artale.firebasestorage.app",
+    messagingSenderId: "793229546795",
+    appId: "1:793229546795:web:8cff2b6f43ae48ac1d616e",
+    measurementId: "G-YH8KBMMQGC"
+  };
+
+  let firebaseApp;
+  try {
+    if (getApps().length === 0) {
+      firebaseApp = initializeApp(DEFAULT_FIREBASE_CONFIG);
+    } else {
+      firebaseApp = getApp();
+    }
+  } catch (error) {
+    console.error("Server-side Firebase initialization failed:", error);
+  }
+  const db = firebaseApp ? getFirestore(firebaseApp) : null;
+  const appId = "artale-expedition-default";
+
   let userCharactersStore: Record<string, { username?: string; avatar?: string; characters: any[]; activeCharacterIndex?: number }> = {};
   let raidStatusStore: Record<string, any> = {};
   const discordSignupsStore: Record<string, any[]> = {};
@@ -528,6 +554,23 @@ async function startServer() {
   if (fs.existsSync(raidStatusesFilePath)) {
     try {
       raidStatusStore = JSON.parse(fs.readFileSync(raidStatusesFilePath, "utf-8"));
+      // Restore discordSignupsStore from yesVotes in raidStatusStore on boot!
+      for (const [rId, status] of Object.entries(raidStatusStore)) {
+        if (status && Array.isArray(status.yesVotes)) {
+          discordSignupsStore[rId] = status.yesVotes.map((v: any) => ({
+            discordId: v.discordId,
+            username: v.discord?.username || v.username || "DiscordUser",
+            avatar: v.discord?.avatar || v.avatar || "",
+            ign: v.ign,
+            job: v.job,
+            level: v.level || 120,
+            memo: v.memo || "",
+            vote: "yes",
+            votes: v.votes || { 0: "yes", interest: "yes" },
+            signedUpAt: v.signedUpAt || new Date().toISOString()
+          }));
+        }
+      }
     } catch (e) {
       console.warn("Failed to load raid_statuses.json", e);
     }
@@ -753,10 +796,160 @@ async function startServer() {
     }
   };
 
+  // Periodic background synchronization of Discord registrations to Firebase Firestore
+  const syncDiscordSignupsToFirestore = async () => {
+    if (!db) {
+      console.warn("[Firestore Server Sync] Firestore not initialized on server.");
+      return;
+    }
+
+    try {
+      const activeRaidIds = Object.keys(raidStatusStore);
+      if (activeRaidIds.length === 0) return;
+
+      for (const raidId of activeRaidIds) {
+        const raidInfo = raidStatusStore[raidId];
+        const signups = discordSignupsStore[raidId] || [];
+        const yesVotes = raidInfo?.yesVotes || [];
+        const noVotes = raidInfo?.noVotes || [];
+
+        if (signups.length === 0 && yesVotes.length === 0 && noVotes.length === 0) {
+          continue;
+        }
+
+        const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
+        const raidSnap = await getDoc(raidRef).catch(err => {
+          console.error(`[Firestore Server Sync] Failed to get doc for raid ${raidId}:`, err);
+          return null;
+        });
+
+        if (!raidSnap || !raidSnap.exists()) {
+          continue;
+        }
+
+        const raidData = raidSnap.data();
+        let currentVotes = [...(raidData?.votes || [])];
+        let currentParticipants = [...(raidData?.participants || [])];
+        let hasChanges = false;
+
+        const activeSignupIgns = new Set([
+          ...signups.map((s: any) => (s.ign || '').trim().toLowerCase()),
+          ...yesVotes.map((v: any) => (v.ign || '').trim().toLowerCase())
+        ]);
+
+        const cancelledIgns = new Set(
+          noVotes.map((v: any) => (v.ign || '').trim().toLowerCase())
+        );
+
+        // 1. Deduplicate currentVotes by IGN
+        const uniqueVotes: any[] = [];
+        const seenIgns = new Set<string>();
+        for (const v of currentVotes) {
+          const ignKey = (v.ign || '').trim().toLowerCase();
+          if (ignKey && !seenIgns.has(ignKey)) {
+            seenIgns.add(ignKey);
+            uniqueVotes.push(v);
+          } else if (ignKey && seenIgns.has(ignKey)) {
+            hasChanges = true;
+          }
+        }
+
+        // 2. Incorporate active Discord signups
+        for (const signup of signups) {
+          const signupIgnKey = (signup.ign || '').trim().toLowerCase();
+          if (!signupIgnKey) continue;
+          if (cancelledIgns.has(signupIgnKey)) continue;
+
+          const existingIdx = uniqueVotes.findIndex(v => 
+            (v.ign && v.ign.trim().toLowerCase() === signupIgnKey) ||
+            (v.discordId && v.discordId === signup.discordId && v.ign === signup.ign) || 
+            (v.discord && v.discord.id === signup.discordId && v.ign === signup.ign) ||
+            (v.userId === `dc_${signup.discordId}_${signup.ign}`)
+          );
+
+          const voteRecord = {
+            userId: existingIdx >= 0 ? uniqueVotes[existingIdx].userId : `dc_${signup.discordId}_${signup.ign}`,
+            discordId: signup.discordId,
+            ign: signup.ign,
+            job: signup.job,
+            level: Number(signup.level) || 120,
+            memo: signup.memo || `Discord 卡片報名 (@${signup.username})`,
+            discord: {
+              id: signup.discordId,
+              username: signup.username,
+              avatar: signup.avatar
+            },
+            vote: 'yes',
+            votes: { 0: 'yes', interest: 'yes' }
+          };
+
+          if (existingIdx >= 0) {
+            const old = uniqueVotes[existingIdx];
+            if (old.job !== voteRecord.job || !old.discord || JSON.stringify(old.votes) !== JSON.stringify(voteRecord.votes)) {
+              uniqueVotes[existingIdx] = { ...old, ...voteRecord };
+              hasChanges = true;
+            }
+          } else {
+            uniqueVotes.push(voteRecord);
+            hasChanges = true;
+          }
+        }
+
+        // 3. Remove votes that were explicitly cancelled on Discord bot OR removed from active signups
+        const filteredVotes = uniqueVotes.filter(v => {
+          const vIgnKey = (v.ign || '').trim().toLowerCase();
+          if (!vIgnKey) return true;
+
+          if (cancelledIgns.has(vIgnKey)) {
+            hasChanges = true;
+            return false;
+          }
+
+          const isFromDiscord = v.userId?.startsWith('dc_') || (v.memo && v.memo.includes('Discord 卡片報名')) || v.discordId || v.discord?.id;
+          if (isFromDiscord && !activeSignupIgns.has(vIgnKey) && (noVotes.length > 0 || signups.length > 0)) {
+            hasChanges = true;
+            return false;
+          }
+
+          return true;
+        });
+
+        // 4. Also check participants roster for cancelled IGNs
+        let filteredParticipants = currentParticipants;
+        if (cancelledIgns.size > 0) {
+          const initialLen = currentParticipants.length;
+          filteredParticipants = currentParticipants.filter(p => {
+            const pIgnKey = (p.ign || '').trim().toLowerCase();
+            return !pIgnKey || !cancelledIgns.has(pIgnKey);
+          });
+          if (filteredParticipants.length !== initialLen) {
+            hasChanges = true;
+          }
+        }
+
+        if (hasChanges) {
+          const updateData: any = { votes: filteredVotes };
+          if (filteredParticipants !== currentParticipants) {
+            updateData.participants = filteredParticipants;
+          }
+          await updateDoc(raidRef, updateData).then(() => {
+            console.log(`[Firestore Server Sync] Successfully synchronized signups for raid ${raidId} directly from server.`);
+          }).catch(err => {
+            console.error(`[Firestore Server Sync] Failed to update Firestore for raid ${raidId}:`, err);
+          });
+        }
+      }
+    } catch (e) {
+      console.error("[Firestore Server Sync] Error in background sync loop:", e);
+    }
+  };
+
   const saveRaidStatuses = () => {
     try {
       fs.writeFileSync(raidStatusesFilePath, JSON.stringify(raidStatusStore, null, 2), "utf-8");
       syncDiscordGatewayClients();
+      // Auto-sync directly to Firestore whenever Discord state updates
+      syncDiscordSignupsToFirestore().catch(() => {});
     } catch (err) {
       console.error("Failed to save raid_statuses.json", err);
     }
@@ -768,8 +961,11 @@ async function startServer() {
   // Store previous data fingerprint per raidId to avoid sending redundant Discord API updates when data hasn't changed
   const lastSentCardFingerprintMap: Record<string, string> = {};
 
-  // Helper to live update public Discord Card message embed
-  const updateDiscordCardMessage = async (raidId: string, forceUpdate = false) => {
+  // Map to hold debounce timers for each raidId
+  const cardUpdateDebounceTimers: Record<string, NodeJS.Timeout> = {};
+
+  // Helper to live update public Discord Card message embed (Actual Execution)
+  const executeUpdateDiscordCardMessage = async (raidId: string, forceUpdate = false) => {
     const raidInfo = raidStatusStore[raidId];
     if (!raidInfo || !raidInfo.botToken || !raidInfo.channelId || !raidInfo.messageId) {
       return;
@@ -930,6 +1126,28 @@ async function startServer() {
     }
   };
 
+  // Debounced wrapper to prevent rate limits and server overload
+  const updateDiscordCardMessage = async (raidId: string, forceUpdate = false) => {
+    if (forceUpdate) {
+      if (cardUpdateDebounceTimers[raidId]) {
+        clearTimeout(cardUpdateDebounceTimers[raidId]);
+        delete cardUpdateDebounceTimers[raidId];
+      }
+      return executeUpdateDiscordCardMessage(raidId, forceUpdate);
+    }
+
+    return new Promise<void>((resolve) => {
+      if (cardUpdateDebounceTimers[raidId]) {
+        clearTimeout(cardUpdateDebounceTimers[raidId]);
+      }
+      cardUpdateDebounceTimers[raidId] = setTimeout(async () => {
+        delete cardUpdateDebounceTimers[raidId];
+        await executeUpdateDiscordCardMessage(raidId, forceUpdate).catch(() => {});
+        resolve();
+      }, 1500); // Debounce updates for 1.5 seconds to batch multiple quick clicks
+    });
+  };
+
   // 🔄 伺服器端：每分鐘 (60 秒) 自動定時輪詢刷新所有已發送的 Discord 招募卡片
   setInterval(async () => {
     try {
@@ -945,6 +1163,15 @@ async function startServer() {
       console.warn("[Auto-Refresh Interval] Error updating Discord cards:", e);
     }
   }, 60000);
+
+  // 🔄 伺服器端：每 15 秒自動定時將 Discord 報名數據與 Firebase Firestore 雙向檢查同步，確保不論網頁有無開啟，數據皆能即時寫入資料庫
+  setInterval(async () => {
+    try {
+      await syncDiscordSignupsToFirestore();
+    } catch (e) {
+      console.warn("[Firestore Background Sync] Error during periodic sync:", e);
+    }
+  }, 15000);
 
   // API Route - Sync full roster of registered users & characters from web client
   app.post("/api/discord/sync-roster", (req: express.Request, res: express.Response) => {
