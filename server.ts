@@ -868,16 +868,16 @@ async function startServer() {
           );
 
           const voteRecord = {
-            userId: existingIdx >= 0 ? uniqueVotes[existingIdx].userId : `dc_${signup.discordId}_${signup.ign}`,
-            discordId: signup.discordId,
-            ign: signup.ign,
-            job: signup.job,
+            userId: (existingIdx >= 0 ? uniqueVotes[existingIdx].userId : '') || `dc_${signup.discordId || 'unknown'}_${signup.ign || 'unknown'}`,
+            discordId: signup.discordId || '',
+            ign: signup.ign || '',
+            job: signup.job || '冒險者',
             level: Number(signup.level) || 120,
-            memo: signup.memo || `Discord 卡片報名 (@${signup.username})`,
+            memo: signup.memo || (signup.username ? `Discord 卡片報名 (@${signup.username})` : 'Discord 卡片報名'),
             discord: {
-              id: signup.discordId,
-              username: signup.username,
-              avatar: signup.avatar
+              id: signup.discordId || '',
+              username: signup.username || '',
+              avatar: signup.avatar || ''
             },
             vote: 'yes',
             votes: { 0: 'yes', interest: 'yes' }
@@ -927,7 +927,8 @@ async function startServer() {
           if (filteredParticipants !== currentParticipants) {
             updateData.participants = filteredParticipants;
           }
-          await updateDoc(raidRef, updateData).then(() => {
+          const safeData = JSON.parse(JSON.stringify(updateData, (_key, val) => (val === undefined ? null : val)));
+          await updateDoc(raidRef, safeData).then(() => {
             console.log(`[Firestore Server Sync] Successfully synchronized signups for raid ${raidId} directly from server.`);
           }).catch(err => {
             console.error(`[Firestore Server Sync] Failed to update Firestore for raid ${raidId}:`, err);
@@ -1295,7 +1296,7 @@ async function startServer() {
         );
         const voterObj = {
           userId: signupRecord.userId,
-          discordId: discordId || undefined,
+          discordId: discordId || "",
           ign,
           job: job || "主教",
           level: level || 120,
@@ -1616,11 +1617,11 @@ async function startServer() {
             if (!selectedChar) continue;
 
             const signupRecord = {
-              discordId,
-              username,
-              avatar,
-              ign: selectedChar.ign,
-              job: selectedChar.job,
+              discordId: discordId || "",
+              username: username || "",
+              avatar: avatar || "",
+              ign: selectedChar.ign || "",
+              job: selectedChar.job || "冒險者",
               level: selectedChar.level || 120,
               memo: selectedChar.memo || "",
               vote: "yes",
@@ -2071,12 +2072,12 @@ async function startServer() {
         }
 
         const signupRecord = {
-          discordId,
-          username,
-          avatar,
-          ign,
-          job,
-          level,
+          discordId: discordId || "",
+          username: username || "",
+          avatar: avatar || "",
+          ign: ign || "",
+          job: job || "冒險者",
+          level: level || "120",
           vote: "yes",
           signedUpAt: new Date().toISOString()
         };

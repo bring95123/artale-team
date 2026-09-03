@@ -1384,16 +1384,16 @@ export default function App() {
         );
         
         const voteRecord = {
-          userId: existingIdx >= 0 ? uniqueVotes[existingIdx].userId : `dc_${signup.discordId}_${signup.ign}`,
-          discordId: signup.discordId,
-          ign: signup.ign,
-          job: signup.job,
+          userId: (existingIdx >= 0 ? uniqueVotes[existingIdx].userId : '') || `dc_${signup.discordId || 'unknown'}_${signup.ign || 'unknown'}`,
+          discordId: signup.discordId || '',
+          ign: signup.ign || '',
+          job: signup.job || '冒險者',
           level: Number(signup.level) || 120,
-          memo: signup.memo || `Discord 卡片報名 (@${signup.username})`,
+          memo: signup.memo || (signup.username ? `Discord 卡片報名 (@${signup.username})` : 'Discord 卡片報名'),
           discord: {
-            id: signup.discordId,
-            username: signup.username,
-            avatar: signup.avatar
+            id: signup.discordId || '',
+            username: signup.username || '',
+            avatar: signup.avatar || ''
           },
           vote: 'yes',
           votes: { 0: 'yes', interest: 'yes' }
@@ -1444,7 +1444,9 @@ export default function App() {
         if (filteredParticipants !== currentParticipants) {
           updateData.participants = filteredParticipants;
         }
-        await updateDoc(raidRef, updateData);
+        // Deep sanitize to prevent any `undefined` values from failing Firebase updateDoc
+        const safeData = JSON.parse(JSON.stringify(updateData, (_key, val) => (val === undefined ? null : val)));
+        await updateDoc(raidRef, safeData);
 
         // Sync latest votes and party roster back to backend server so original Discord card is immediately patched
         const p1 = filteredParticipants.filter((p: any) => p.party === '1');
