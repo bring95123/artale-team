@@ -1,0 +1,411 @@
+{
+  "dMMNDw5YALiUKlrsiWOD": {
+    "title": "09/08(二)更新後的\"圍毆炎魔\"行動",
+    "bossName": "普通炎魔",
+    "partyCount": 1,
+    "targetCount": 6,
+    "leaderName": "FRF2",
+    "customNote": "",
+    "yesVotes": [],
+    "noVotes": [],
+    "party1": [],
+    "party2": [],
+    "party3": [],
+    "reserves": [],
+    "raidId": "dMMNDw5YALiUKlrsiWOD",
+    "updatedAt": "2026-09-03T16:42:53.969Z"
+  },
+  "XSI0lvKCCCMuWE0FBxdL": {
+    "title": "09/08(二)更新後的\"圍毆普通拉圖斯\"行動",
+    "bossName": "普通拉圖斯",
+    "partyCount": 1,
+    "targetCount": 6,
+    "leaderName": "FRF2",
+    "customNote": "",
+    "yesVotes": [
+      {
+        "ign": "KK_Ray",
+        "job": "冰雷大魔導",
+        "level": 133,
+        "discordId": "726429386126917683",
+        "username": "ray_07_06"
+      },
+      {
+        "ign": "SMG45",
+        "job": "夜使者",
+        "level": 131,
+        "discordId": "364398804885307393",
+        "username": "Xiaohau"
+      },
+      {
+        "ign": "SA58",
+        "job": "黑騎士",
+        "level": 131,
+        "discordId": "364398804885307393",
+        "username": "Xiaohau"
+      },
+      {
+        "ign": "阿牛印鈔機",
+        "job": "夜使者",
+        "level": 135,
+        "discordId": "591984969665085457",
+        "username": "阿牛-箭神"
+      }
+    ],
+    "noVotes": [],
+    "party1": [],
+    "party2": [],
+    "party3": [],
+    "reserves": [],
+    "raidId": "XSI0lvKCCCMuWE0FBxdL",
+    "updatedAt": "2026-09-03T16:42:53.972Z"
+  },
+  "fdDNW1GqT9XVnlRYrSfl": {
+    "title": "09/01(二)更新後的\"圍毆炎魔\"行動",
+    "bossName": "普通炎魔",
+    "partyCount": 1,
+    "targetCount": 6,
+    "leaderName": "補夢網",
+    "customNote": "",
+    "yesVotes": [
+      {
+        "ign": "FRF2",
+        "job": "神射手",
+        "level": 157,
+        "discordId": "364398804885307393",
+        "username": "Xiaohau"
+      }
+    ],
+    "noVotes": [],
+    "party1": [],
+    "party2": [],
+    "party3": [],
+    "reserves": [],
+    "raidId": "fdDNW1GqT9XVnlRYrSfl",
+    "updatedAt": "2026-09-03T16:42:53.973Z"
+  },
+  "efOUPnapAwyp0qv3Iy5Q": {
+    "title": "09/01(二)更新後的\"圍毆普通拉圖斯\"行動",
+    "bossName": "普通拉圖斯",
+    "partyCount": 2,
+    "targetCount": 6,
+    "leaderName": "補夢網",
+    "customNote": "",
+    "yesVotes": [
+      {
+        "ign": "日向白",
+        "job": "冰雷大魔導",
+        "level": 156,
+        "discordId": "555731966289379349",
+        "username": "日向白（Whiteeye）"
+      },
+      {
+        "ign": "KK_Ray",
+        "job": "冰雷大魔導",
+        "level": 133,
+        "discordId": "726429386126917683",
+        "username": "ray_07_06"
+      },
+      {
+        "ign": "幸運機",
+        "job": "夜使者",
+        "level": 137,
+        "discordId": "1394655269040033954",
+        "username": "魔鬼躲在細節裡"
+      },
+      {
+        "ign": "泡泡軟糖Ouo",
+        "job": "主教",
+        "level": 131,
+        "discordId": "518395757292814337",
+        "username": "洋蔥跟我的男人味\"不吃味\""
+      },
+      {
+        "ign": "阿牛印鈔機",
+        "job": "夜使者",
+        "level": 136,
+        "discordId": "591984969665085457",
+        "username": "阿牛"
+      },
+      {
+        "ign": "華強",
+        "job": "神射手",
+        "level": 135,
+        "discordId": "517293279478284289",
+        "username": "豸才"
+      },
+      {
+        "ign": "榆魚漁",
+        "job": "黑騎士",
+        "level": 122,
+        "discordId": "1542124888058499123",
+        "username": "榆魚漁"
+      },
+      {
+        "ign": "棄天帝",
+        "job": "聖騎士",
+        "level": 135,
+        "discordId": "1403346009039568957",
+        "username": "Nana"
+      },
+      {
+        "ign": "B5",
+        "job": "拳霸",
+        "level": 147,
+        "discordId": "1403346009039568957",
+        "username": "Nana"
+      },
+      {
+        "ign": "SA58",
+        "job": "黑騎士",
+        "level": 131,
+        "discordId": "364398804885307393",
+        "username": "Xiaohau"
+      },
+      {
+        "ign": "SMG45",
+        "job": "夜使者",
+        "level": 131,
+        "discordId": "364398804885307393",
+        "username": "Xiaohau"
+      },
+      {
+        "ign": "FRF2",
+        "job": "神射手",
+        "level": 157,
+        "discordId": "364398804885307393",
+        "username": "Xiaohau"
+      }
+    ],
+    "noVotes": [],
+    "party1": [
+      {
+        "ign": "棄天帝",
+        "job": "聖騎士",
+        "level": 135,
+        "discordId": "1403346009039568957"
+      },
+      {
+        "ign": "B5",
+        "job": "拳霸",
+        "level": 147,
+        "discordId": "1403346009039568957"
+      },
+      {
+        "ign": "KK_Ray",
+        "job": "冰雷大魔導",
+        "level": 133,
+        "discordId": "726429386126917683"
+      },
+      {
+        "ign": "幸運機",
+        "job": "夜使者",
+        "level": 137,
+        "discordId": "1394655269040033954"
+      },
+      {
+        "ign": "泡泡軟糖Ouo",
+        "job": "主教",
+        "level": 131,
+        "discordId": "518395757292814337"
+      },
+      {
+        "ign": "SA58",
+        "job": "黑騎士",
+        "level": 131,
+        "discordId": "364398804885307393"
+      }
+    ],
+    "party2": [
+      {
+        "ign": "日向白",
+        "job": "冰雷大魔導",
+        "level": 156,
+        "discordId": "555731966289379349"
+      },
+      {
+        "ign": "華強",
+        "job": "神射手",
+        "level": 135,
+        "discordId": "517293279478284289"
+      },
+      {
+        "ign": "榆魚漁",
+        "job": "黑騎士",
+        "level": 122,
+        "discordId": "1542124888058499123"
+      },
+      {
+        "ign": "阿牛印鈔機",
+        "job": "夜使者",
+        "level": 136,
+        "discordId": "591984969665085457"
+      },
+      {
+        "ign": "FRF2",
+        "job": "神射手",
+        "level": 157,
+        "discordId": "364398804885307393"
+      },
+      {
+        "ign": "SMG45",
+        "job": "夜使者",
+        "level": 131,
+        "discordId": "364398804885307393"
+      }
+    ],
+    "party3": [],
+    "reserves": [],
+    "raidId": "efOUPnapAwyp0qv3Iy5Q",
+    "updatedAt": "2026-09-03T16:42:53.974Z"
+  },
+  "Bjf2JE6oRJuBkCTvpvkA": {
+    "title": "龍王拓荒團",
+    "bossName": "闇黑龍王",
+    "partyCount": 2,
+    "targetCount": 12,
+    "leaderName": "砸挖",
+    "customNote": "160+\n楓葉淨化、櫻桃派、萬能藥、一堆藥水",
+    "yesVotes": [
+      {
+        "ign": "檸檬歐歐",
+        "job": "夜使者",
+        "level": 183,
+        "discordId": "776018101174665227",
+        "username": "白開水"
+      },
+      {
+        "ign": "如洙如宝",
+        "job": "英雄",
+        "level": 160,
+        "discordId": "769899503779840051",
+        "username": "🐷🐷"
+      },
+      {
+        "ign": "純粹",
+        "job": "暗影神偷",
+        "level": 176,
+        "discordId": "582202084242489355",
+        "username": "西西簇簇◡̈"
+      },
+      {
+        "ign": "Lisa小",
+        "job": "黑騎士",
+        "level": 169,
+        "discordId": "723225048982356128",
+        "username": "chenyu"
+      },
+      {
+        "ign": "藍色蘑菇王",
+        "job": "神射手",
+        "level": 170,
+        "discordId": "272595920791666689",
+        "username": "z21954790"
+      },
+      {
+        "ign": "砸挖魯多",
+        "job": "黑騎士",
+        "level": 165,
+        "discordId": "757631225933594776",
+        "username": "克里斯500"
+      },
+      {
+        "ign": "FRF2",
+        "job": "神射手",
+        "level": 157,
+        "discordId": "364398804885307393",
+        "username": "Xiaohau"
+      },
+      {
+        "ign": "泡泡軟糖Ouo",
+        "job": "主教",
+        "level": 131,
+        "discordId": "518395757292814337",
+        "username": "洋蔥跟我的男人味\"不吃味\""
+      },
+      {
+        "ign": "LV",
+        "job": "英雄",
+        "level": 166,
+        "discordId": "379166743769251846",
+        "username": "lv"
+      }
+    ],
+    "noVotes": [],
+    "party1": [
+      {
+        "ign": "如洙如宝",
+        "job": "英雄",
+        "level": 160,
+        "discordId": "769899503779840051"
+      },
+      {
+        "ign": "純粹",
+        "job": "暗影神偷",
+        "level": 176,
+        "discordId": "582202084242489355"
+      },
+      {
+        "ign": "Lisa小",
+        "job": "黑騎士",
+        "level": 169,
+        "discordId": "723225048982356128"
+      },
+      {
+        "ign": "藍色蘑菇王",
+        "job": "神射手",
+        "level": 170,
+        "discordId": "272595920791666689"
+      }
+    ],
+    "party2": [
+      {
+        "ign": "檸檬歐歐",
+        "job": "夜使者",
+        "level": 183,
+        "discordId": "776018101174665227"
+      },
+      {
+        "ign": "幸運機",
+        "job": "夜使者",
+        "level": 137,
+        "discordId": "1394655269040033954"
+      },
+      {
+        "ign": "砸挖魯多",
+        "job": "黑騎士",
+        "level": 165,
+        "discordId": "757631225933594776"
+      },
+      {
+        "ign": "FRF2",
+        "job": "神射手",
+        "level": 157,
+        "discordId": "364398804885307393"
+      }
+    ],
+    "party3": [],
+    "reserves": [
+      {
+        "ign": "阿牛印鈔機",
+        "job": "夜使者",
+        "level": 136,
+        "discordId": "591984969665085457"
+      },
+      {
+        "ign": "LV",
+        "job": "英雄",
+        "level": 166,
+        "discordId": "379166743769251846"
+      },
+      {
+        "ign": "泡泡軟糖Ouo",
+        "job": "主教",
+        "level": 131,
+        "discordId": "518395757292814337"
+      }
+    ],
+    "raidId": "Bjf2JE6oRJuBkCTvpvkA",
+    "updatedAt": "2026-09-03T16:42:53.975Z"
+  }
+}

@@ -1370,8 +1370,31 @@ export default function App() {
         }
       }
 
-      // 2. Incorporate active Discord signups
-      for (const signup of signups) {
+      // 2. Incorporate active Discord signups (both from discordSignupsStore and yesVotes)
+      const signupMap = new Map<string, any>();
+      for (const s of signups) {
+        if (s && s.ign) signupMap.set(s.ign.trim().toLowerCase(), s);
+      }
+      for (const y of yesVotes) {
+        if (y && y.ign) {
+          const k = y.ign.trim().toLowerCase();
+          if (!signupMap.has(k)) {
+            signupMap.set(k, {
+              discordId: y.discordId || y.discord?.id || '',
+              username: y.username || y.discord?.username || '',
+              avatar: y.avatar || y.discord?.avatar || '',
+              ign: y.ign,
+              job: y.job || '冒險者',
+              level: y.level || 120,
+              memo: y.memo || '',
+              vote: 'yes'
+            });
+          }
+        }
+      }
+      const combinedSignups = Array.from(signupMap.values());
+
+      for (const signup of combinedSignups) {
         const signupIgnKey = (signup.ign || '').trim().toLowerCase();
         if (!signupIgnKey) continue;
         if (cancelledIgns.has(signupIgnKey)) continue;

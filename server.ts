@@ -511,6 +511,7 @@ async function startServer() {
   // Stores for Registered Character Cards & Raid Statuses
   const charsFilePath = path.join(uploadRootDir, "registered_characters.json");
   const raidStatusesFilePath = path.join(uploadRootDir, "raid_statuses.json");
+  const discordSignupsFilePath = path.join(uploadRootDir, "discord_signups.json");
   const keyFilePath = path.join(uploadRootDir, "discord_key.txt");
 
   // Firebase client initialization on server-side
@@ -573,6 +574,19 @@ async function startServer() {
       }
     } catch (e) {
       console.warn("Failed to load raid_statuses.json", e);
+    }
+  }
+
+  if (fs.existsSync(discordSignupsFilePath)) {
+    try {
+      const persistedSignups = JSON.parse(fs.readFileSync(discordSignupsFilePath, "utf-8"));
+      for (const [rId, list] of Object.entries(persistedSignups)) {
+        if (Array.isArray(list)) {
+          discordSignupsStore[rId] = list;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load discord_signups.json", e);
     }
   }
 
@@ -854,8 +868,31 @@ async function startServer() {
           }
         }
 
-        // 2. Incorporate active Discord signups
-        for (const signup of signups) {
+        // 2. Incorporate active Discord signups (both from discordSignupsStore and yesVotes)
+        const signupMap = new Map<string, any>();
+        for (const s of signups) {
+          if (s && s.ign) signupMap.set(s.ign.trim().toLowerCase(), s);
+        }
+        for (const y of yesVotes) {
+          if (y && y.ign) {
+            const k = y.ign.trim().toLowerCase();
+            if (!signupMap.has(k)) {
+              signupMap.set(k, {
+                discordId: y.discordId || y.discord?.id || '',
+                username: y.username || y.discord?.username || '',
+                avatar: y.avatar || y.discord?.avatar || '',
+                ign: y.ign,
+                job: y.job || '冒險者',
+                level: y.level || 120,
+                memo: y.memo || '',
+                vote: 'yes'
+              });
+            }
+          }
+        }
+        const combinedSignups = Array.from(signupMap.values());
+
+        for (const signup of combinedSignups) {
           const signupIgnKey = (signup.ign || '').trim().toLowerCase();
           if (!signupIgnKey) continue;
           if (cancelledIgns.has(signupIgnKey)) continue;
@@ -943,6 +980,7 @@ async function startServer() {
   const saveRaidStatuses = () => {
     try {
       fs.writeFileSync(raidStatusesFilePath, JSON.stringify(raidStatusStore, null, 2), "utf-8");
+      fs.writeFileSync(discordSignupsFilePath, JSON.stringify(discordSignupsStore, null, 2), "utf-8");
       syncDiscordGatewayClients();
       // Auto-sync directly to Firestore whenever Discord state updates
       syncDiscordSignupsToFirestore().catch(() => {});
@@ -1322,12 +1360,59 @@ async function startServer() {
 
   // API Route - Sync Raid Status (Figure 2 data) from Web Client
   app.post("/api/discord/sync-raid-status", (req: express.Request, res: express.Response) => {
-    const { raidId, ...statusData } = req.body;
+    const { raidId, yesVotes: incomingYes, noVotes: incomingNo, ...statusData } = req.body;
     if (raidId) {
+      const existing = raidStatusStore[raidId] || {};
+      const existingYes = existing.yesVotes || [];
+      const signups = discordSignupsStore[raidId] || [];
+
+      // Merge: Keep existing yes votes & Discord signups, plus incoming from Web
+      const mergedYesMap = new Map<string, any>();
+      existingYes.forEach((v: any) => {
+        if (v && v.ign) mergedYesMap.set(v.ign.trim().toLowerCase(), v);
+      });
+      signups.forEach((s: any) => {
+        if (s && s.ign) {
+          const k = s.ign.trim().toLowerCase();
+          if (!mergedYesMap.has(k)) {
+            mergedYesMap.set(k, {
+              userId: s.userId || `dc_${s.discordId}_${s.ign}`,
+              discordId: s.discordId || "",
+              username: s.username || "",
+              avatar: s.avatar || "",
+              ign: s.ign,
+              job: s.job || "冒險者",
+              level: s.level || 120,
+              memo: s.memo || "",
+              vote: "yes"
+            });
+          }
+        }
+      });
+      if (Array.isArray(incomingYes)) {
+        incomingYes.forEach((v: any) => {
+          if (v && v.ign) {
+            const k = v.ign.trim().toLowerCase();
+            if (mergedYesMap.has(k)) {
+              mergedYesMap.set(k, { ...mergedYesMap.get(k), ...v });
+            } else {
+              mergedYesMap.set(k, v);
+            }
+          }
+        });
+      }
+
+      // Filter out any explicitly cancelled
+      const activeNoVotes = incomingNo || existing.noVotes || [];
+      const noMap = new Set(activeNoVotes.map((n: any) => (n.ign || '').trim().toLowerCase()));
+      const finalYes = Array.from(mergedYesMap.values()).filter(v => !noMap.has((v.ign || '').trim().toLowerCase()));
+
       raidStatusStore[raidId] = {
-        ...(raidStatusStore[raidId] || {}),
+        ...existing,
         ...statusData,
         raidId,
+        yesVotes: finalYes,
+        noVotes: activeNoVotes,
         updatedAt: new Date().toISOString()
       };
       saveRaidStatuses();
