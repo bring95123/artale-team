@@ -868,11 +868,10 @@ async function startServer() {
 
       for (const raidId of activeRaidIds) {
         const raidInfo = raidStatusStore[raidId];
-        const signups = discordSignupsStore[raidId] || [];
-        const yesVotes = raidInfo?.yesVotes || [];
+        const signups = (discordSignupsStore[raidId] || []).filter(s => s.pendingSync);
         const noVotes = raidInfo?.noVotes || [];
 
-        if (signups.length === 0 && yesVotes.length === 0 && noVotes.length === 0) {
+        if (signups.length === 0 && noVotes.length === 0) {
           continue;
         }
 
@@ -891,11 +890,6 @@ async function startServer() {
         let currentParticipants = [...(raidData?.participants || [])];
         let hasChanges = false;
 
-        const activeSignupIgns = new Set([
-          ...signups.map((s: any) => (s.ign || '').trim().toLowerCase()),
-          ...yesVotes.map((v: any) => (v.ign || '').trim().toLowerCase())
-        ]);
-
         const cancelledIgns = new Set(
           noVotes.map((v: any) => (v.ign || '').trim().toLowerCase())
         );
@@ -913,32 +907,8 @@ async function startServer() {
           }
         }
 
-        // 2. Incorporate active Discord signups (both from discordSignupsStore and yesVotes)
-        const signupMap = new Map<string, any>();
-        for (const s of signups) {
-          if (s && s.ign) signupMap.set(s.ign.trim().toLowerCase(), s);
-        }
-        for (const y of yesVotes) {
-          if (y && y.ign) {
-            const k = y.ign.trim().toLowerCase();
-            if (!signupMap.has(k)) {
-              signupMap.set(k, {
-                discordId: y.discordId || y.discord?.id || '',
-                username: y.username || y.discord?.username || '',
-                avatar: y.avatar || y.discord?.avatar || '',
-                ign: y.ign,
-                job: y.job || '冒險者',
-                level: y.level || 120,
-                memo: y.memo || '',
-                vote: 'yes',
-                votes: y.votes || { interest: 'yes' }
-              });
-            }
-          }
-        }
-        const combinedSignups = Array.from(signupMap.values());
-
-        for (const signup of combinedSignups) {
+        // 2. Incorporate ONLY pending Discord signups that haven't been written to Firestore
+        for (const signup of signups) {
           const signupIgnKey = (signup.ign || '').trim().toLowerCase();
           if (!signupIgnKey) continue;
           if (cancelledIgns.has(signupIgnKey)) continue;
@@ -952,26 +922,19 @@ async function startServer() {
 
           if (existingIdx >= 0) {
             const old = uniqueVotes[existingIdx];
-            // Preserve user's existing time candidate votes (keep web votes intact)
-            const mergedVotes = (old.votes && Object.keys(old.votes).length > 0)
-              ? old.votes
-              : (signup.votes || { interest: 'yes' });
-
             const mergedRecord = {
               ...old,
-              ign: old.ign || signup.ign,
-              job: old.job || signup.job,
+              ign: signup.ign || old.ign,
+              job: signup.job || old.job,
               level: old.level !== undefined ? old.level : (Number(signup.level) || 120),
               memo: old.memo !== undefined ? old.memo : (signup.memo || ''),
               discord: old.discord || (signup.discordId ? { id: signup.discordId, username: signup.username, avatar: signup.avatar } : null),
-              votes: mergedVotes,
+              votes: signup.votes || old.votes || { interest: 'yes' },
               vote: 'yes'
             };
 
-            if (!old.discord && mergedRecord.discord) {
-              uniqueVotes[existingIdx] = mergedRecord;
-              hasChanges = true;
-            }
+            uniqueVotes[existingIdx] = mergedRecord;
+            hasChanges = true;
           } else {
             const voteRecord = {
               userId: `dc_${signup.discordId || 'unknown'}_${signup.ign || 'unknown'}`,
@@ -991,6 +954,8 @@ async function startServer() {
             uniqueVotes.push(voteRecord);
             hasChanges = true;
           }
+
+          signup.pendingSync = false;
         }
 
         // 3. Remove votes ONLY if they were explicitly marked as cancelled on Discord bot
@@ -998,7 +963,6 @@ async function startServer() {
           const vIgnKey = (v.ign || '').trim().toLowerCase();
           if (!vIgnKey) return true;
 
-          // If explicitly cancelled on Discord bot
           if (cancelledIgns.has(vIgnKey)) {
             hasChanges = true;
             return false;
@@ -1343,43 +1307,31 @@ async function startServer() {
   app.post("/api/discord/remove-signup", (req: express.Request, res: express.Response) => {
     const { raidId, discordId, ign, userId } = req.body;
     if (raidId && (ign || discordId || userId)) {
+      const ignLower = (ign || '').trim().toLowerCase();
+
       if (discordSignupsStore[raidId]) {
         discordSignupsStore[raidId] = discordSignupsStore[raidId].filter(s => {
-          if (ign) return s.ign?.trim().toLowerCase() !== ign.trim().toLowerCase();
-          if (discordId) return s.discordId !== discordId;
-          if (userId) return s.userId !== userId && `dc_${s.discordId}_${s.ign}` !== userId;
+          if (ignLower && s.ign?.trim().toLowerCase() === ignLower) return false;
+          if (userId && (s.userId === userId || `dc_${s.discordId}_${s.ign}` === userId)) return false;
           return true;
         });
       }
 
       if (raidStatusStore[raidId]) {
-        const removedItems = (raidStatusStore[raidId].yesVotes || []).filter((v: any) => {
-          if (ign) return v.ign?.trim().toLowerCase() === ign.trim().toLowerCase();
-          if (discordId) return v.discordId === discordId;
-          if (userId) return v.userId === userId || `dc_${v.discordId}_${v.ign}` === userId;
-          return false;
-        });
-
         raidStatusStore[raidId].yesVotes = (raidStatusStore[raidId].yesVotes || []).filter((v: any) => {
-          if (ign) return v.ign?.trim().toLowerCase() !== ign.trim().toLowerCase();
-          if (discordId) return v.discordId !== discordId;
-          if (userId) return v.userId !== userId && `dc_${v.discordId}_${v.ign}` !== userId;
+          if (ignLower && v.ign?.trim().toLowerCase() === ignLower) return false;
+          if (userId && (v.userId === userId || `dc_${v.discordId}_${v.ign}` === userId)) return false;
           return true;
         });
 
-        // Add removed items to noVotes
+        // Add removed items to noVotes to prevent ghost resurrections
         const currentNo = raidStatusStore[raidId].noVotes || [];
-        for (const item of removedItems) {
-          if (!currentNo.some((v: any) => v.ign?.trim().toLowerCase() === item.ign?.trim().toLowerCase())) {
-            currentNo.push(item);
-          }
-        }
-        if (ign && !currentNo.some((v: any) => v.ign?.trim().toLowerCase() === ign.trim().toLowerCase())) {
+        if (ign && !currentNo.some((v: any) => v.ign?.trim().toLowerCase() === ignLower)) {
           currentNo.push({ ign, discordId, userId });
         }
         raidStatusStore[raidId].noVotes = currentNo;
 
-        saveRaidStatuses();
+        saveRaidStatuses(true);
         updateDiscordCardMessage(raidId).catch(() => {});
       }
 
@@ -1454,21 +1406,30 @@ async function startServer() {
     return res.status(400).json({ error: "Missing raidId or ign" });
   });
 
-  // API Route - Sync Raid Status (Figure 2 data) from Web Client
+  // API Route - Sync Raid Status from Web Client (Firestore is single source of truth)
   app.post("/api/discord/sync-raid-status", (req: express.Request, res: express.Response) => {
     const { raidId, yesVotes: incomingYes, noVotes: incomingNo, ...statusData } = req.body;
     if (raidId) {
       const existing = raidStatusStore[raidId] || {};
-      const existingYes = existing.yesVotes || [];
       const signups = discordSignupsStore[raidId] || [];
 
-      // Merge: Keep existing yes votes & Discord signups, plus incoming from Web
+      // Authoritative merge from Web / Firestore
       const mergedYesMap = new Map<string, any>();
-      existingYes.forEach((v: any) => {
-        if (v && v.ign) mergedYesMap.set(v.ign.trim().toLowerCase(), v);
-      });
+      if (Array.isArray(incomingYes)) {
+        incomingYes.forEach((v: any) => {
+          if (v && v.ign) {
+            const k = v.ign.trim().toLowerCase();
+            mergedYesMap.set(k, {
+              ...v,
+              votes: v.votes || { interest: "yes" }
+            });
+          }
+        });
+      }
+
+      // Merge ONLY active pending Discord signups that haven't been synchronized to Firestore yet
       signups.forEach((s: any) => {
-        if (s && s.ign) {
+        if (s && s.ign && s.pendingSync) {
           const k = s.ign.trim().toLowerCase();
           if (!mergedYesMap.has(k)) {
             mergedYesMap.set(k, {
@@ -1481,36 +1442,23 @@ async function startServer() {
               level: s.level || 120,
               memo: s.memo || "",
               vote: "yes",
-              votes: s.votes || { 0: "yes", interest: "yes" }
+              votes: s.votes || { interest: "yes" }
             });
           }
         }
       });
-      if (Array.isArray(incomingYes)) {
-        incomingYes.forEach((v: any) => {
-          if (v && v.ign) {
-            const k = v.ign.trim().toLowerCase();
-            if (mergedYesMap.has(k)) {
-              const old = mergedYesMap.get(k);
-              mergedYesMap.set(k, {
-                ...old,
-                ...v,
-                votes: v.votes || old.votes || { 0: "yes", interest: "yes" }
-              });
-            } else {
-              mergedYesMap.set(k, {
-                ...v,
-                votes: v.votes || { 0: "yes", interest: "yes" }
-              });
-            }
-          }
-        });
-      }
 
       // Filter out any explicitly cancelled
       const activeNoVotes = incomingNo || existing.noVotes || [];
       const noMap = new Set(activeNoVotes.map((n: any) => (n.ign || '').trim().toLowerCase()));
       const finalYes = Array.from(mergedYesMap.values()).filter(v => !noMap.has((v.ign || '').trim().toLowerCase()));
+
+      // Keep discordSignupsStore aligned with active votes
+      if (discordSignupsStore[raidId]) {
+        discordSignupsStore[raidId] = discordSignupsStore[raidId].filter(s =>
+          s.ign && mergedYesMap.has(s.ign.trim().toLowerCase()) && !noMap.has(s.ign.trim().toLowerCase())
+        );
+      }
 
       raidStatusStore[raidId] = {
         ...existing,
@@ -1557,7 +1505,7 @@ async function startServer() {
     const { raidId } = req.params;
     const status = raidStatusStore[raidId];
     return res.json({ 
-      signups: discordSignupsStore[raidId] || [],
+      signups: (discordSignupsStore[raidId] || []).filter(s => s.pendingSync),
       yesVotes: status?.yesVotes || [],
       noVotes: status?.noVotes || []
     });
@@ -1837,7 +1785,7 @@ async function startServer() {
                     components: [
                       {
                         type: 3, // String Select Menu
-                        custom_id: `select_times_${raidId}_${charsParam}`,
+                        custom_id: `select_times_${raidId}:::${charsParam}`,
                         placeholder: "⏰ 點擊勾選可以配合的時間候選區 (可多選)...",
                         options: timeOptions,
                         min_values: 1,
@@ -1851,7 +1799,7 @@ async function startServer() {
                       {
                         type: 2, // BUTTON
                         style: 3, // Success (Green)
-                        custom_id: `times_all_${raidId}_${charsParam}`,
+                        custom_id: `times_all_${raidId}:::${charsParam}`,
                         label: "🌟 快速全選：所有候選時段皆可配合",
                         emoji: { name: "✨" }
                       }
@@ -1884,6 +1832,7 @@ async function startServer() {
               memo: selectedChar.memo || "",
               vote: "yes",
               votes: { interest: "yes" },
+              pendingSync: true,
               signedUpAt: new Date().toISOString()
             };
 
@@ -1955,9 +1904,17 @@ async function startServer() {
         const isAll = customId.startsWith("times_all_");
         const prefix = isAll ? "times_all_" : "select_times_";
         const rest = customId.replace(prefix, "");
-        const firstUnderscore = rest.indexOf("_");
-        const raidId = firstUnderscore >= 0 ? rest.slice(0, firstUnderscore) : rest;
-        const charsParam = firstUnderscore >= 0 ? rest.slice(firstUnderscore + 1) : "";
+        let raidId = "";
+        let charsParam = "";
+        if (rest.includes(":::")) {
+          const parts = rest.split(":::");
+          raidId = parts[0];
+          charsParam = parts[1] || "";
+        } else {
+          const firstUnderscore = rest.indexOf("_");
+          raidId = firstUnderscore >= 0 ? rest.slice(0, firstUnderscore) : rest;
+          charsParam = firstUnderscore >= 0 ? rest.slice(firstUnderscore + 1) : "";
+        }
 
         const raidInfo = raidStatusStore[raidId];
         const userProfile = userCharactersStore[discordId];
@@ -2011,6 +1968,7 @@ async function startServer() {
             memo: selectedChar.memo || "",
             vote: "yes",
             votes: votesMap,
+            pendingSync: true,
             signedUpAt: new Date().toISOString()
           };
 

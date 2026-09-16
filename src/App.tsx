@@ -1400,12 +1400,6 @@ export default function App() {
       let hasChanges = false;
       let addedCount = 0;
 
-      // Sets of IGNs from server stores
-      const activeSignupIgns = new Set([
-        ...signups.map((s: any) => (s.ign || '').trim().toLowerCase()),
-        ...yesVotes.map((v: any) => (v.ign || '').trim().toLowerCase())
-      ]);
-
       const cancelledIgns = new Set(
         noVotes.map((v: any) => (v.ign || '').trim().toLowerCase())
       );
@@ -1423,27 +1417,10 @@ export default function App() {
         }
       }
 
-      // 2. Incorporate active Discord signups (both from discordSignupsStore and yesVotes)
+      // 2. Incorporate ONLY active pending Discord signups from Discord Bot interactions
       const signupMap = new Map<string, any>();
       for (const s of signups) {
         if (s && s.ign) signupMap.set(s.ign.trim().toLowerCase(), s);
-      }
-      for (const y of yesVotes) {
-        if (y && y.ign) {
-          const k = y.ign.trim().toLowerCase();
-          if (!signupMap.has(k)) {
-            signupMap.set(k, {
-              discordId: y.discordId || y.discord?.id || '',
-              username: y.username || y.discord?.username || '',
-              avatar: y.avatar || y.discord?.avatar || '',
-              ign: y.ign,
-              job: y.job || '冒險者',
-              level: y.level || 120,
-              memo: y.memo || '',
-              vote: 'yes'
-            });
-          }
-        }
       }
       const combinedSignups = Array.from(signupMap.values());
 
