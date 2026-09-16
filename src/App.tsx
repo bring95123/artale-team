@@ -787,7 +787,7 @@ export default function App() {
       setShowProfileModal(true);
       return;
     }
-    const raid = raids.find(r => r.id === raidId);
+    const raid = raidsRef.current.find((r: any) => r.id === raidId) || raids.find(r => r.id === raidId);
     if (!raid) return;
 
     try {
@@ -799,6 +799,8 @@ export default function App() {
         (v.userId === customUid && v.ign === activeCharacter.ign)
       );
 
+      const strKey = String(timeIndex);
+
       if (userVoteIndex > -1) {
         const userVote = { ...updatedVotes[userVoteIndex] };
         userVote.ign = activeCharacter.ign;
@@ -806,14 +808,18 @@ export default function App() {
         userVote.level = activeCharacter.level;
         userVote.memo = (activeCharacter.memo || '').trim();
         userVote.discord = discordUser || userVote.discord || null;
+        userVote.votes = { ...(userVote.votes || {}) };
 
-        if (userVote.votes && userVote.votes[timeIndex] === choice) {
+        const currentChoice = userVote.votes[timeIndex] || userVote.votes[strKey];
+
+        if (currentChoice === choice) {
           // Toggle OFF (Cancel)
           const nextVotes = { ...userVote.votes };
           delete nextVotes[timeIndex];
+          delete nextVotes[strKey];
           userVote.votes = nextVotes;
 
-          const activeVotesCount = Object.values(nextVotes).length;
+          const activeVotesCount = Object.keys(nextVotes).length;
           if (activeVotesCount === 0) {
             updatedVotes = updatedVotes.filter((_, idx) => idx !== userVoteIndex);
             // Synchronously remove from server store & update Discord message embed
@@ -850,7 +856,10 @@ export default function App() {
           showToast(`已取消【${activeCharacter.ign}】於此時段的登記！`);
         } else {
           // Change/Update to choice
-          userVote.votes = { ...(userVote.votes || {}), [timeIndex]: choice };
+          userVote.votes[strKey] = choice;
+          if (typeof timeIndex === 'number') {
+            userVote.votes[timeIndex] = choice;
+          }
           updatedVotes[userVoteIndex] = userVote;
           await updateDoc(raidRef, { votes: updatedVotes });
 
@@ -875,6 +884,10 @@ export default function App() {
         }
       } else {
         // First-time vote
+        const newVotesObj: Record<string, string> = { [strKey]: choice };
+        if (typeof timeIndex === 'number') {
+          newVotesObj[timeIndex] = choice;
+        }
         const newVoteEntry = {
           userId: customUid,
           ign: activeCharacter.ign,
@@ -882,7 +895,8 @@ export default function App() {
           level: activeCharacter.level,
           memo: (activeCharacter.memo || '').trim(),
           discord: discordUser || null,
-          votes: { [timeIndex]: choice }
+          votes: newVotesObj,
+          vote: 'yes'
         };
         updatedVotes.push(newVoteEntry);
         await updateDoc(raidRef, { votes: updatedVotes });
@@ -1447,10 +1461,10 @@ export default function App() {
         
         if (existingIdx >= 0) {
           const old = uniqueVotes[existingIdx];
-          // Preserve user's existing time candidate votes (e.g. voted for multiple slots on web)
+          // Preserve user's existing time candidate votes (keep web votes intact)
           const mergedVotes = (old.votes && Object.keys(old.votes).length > 0)
-            ? { ...old.votes, ...(signup.votes || {}) }
-            : (signup.votes || { 0: 'yes', interest: 'yes' });
+            ? old.votes
+            : (signup.votes || { interest: 'yes' });
 
           const mergedRecord = {
             ...old,
@@ -1486,7 +1500,7 @@ export default function App() {
               avatar: signup.avatar || ''
             },
             vote: 'yes',
-            votes: signup.votes || { 0: 'yes', interest: 'yes' }
+            votes: signup.votes || { interest: 'yes' }
           };
           uniqueVotes.push(voteRecord);
           addedCount++;

@@ -612,7 +612,7 @@ async function startServer() {
             level: v.level || 120,
             memo: v.memo || "",
             vote: "yes",
-            votes: v.votes || { 0: "yes", interest: "yes" },
+            votes: v.votes || { interest: "yes" },
             signedUpAt: v.signedUpAt || new Date().toISOString()
           }));
         }
@@ -931,7 +931,7 @@ async function startServer() {
                 level: y.level || 120,
                 memo: y.memo || '',
                 vote: 'yes',
-                votes: y.votes || { 0: 'yes', interest: 'yes' }
+                votes: y.votes || { interest: 'yes' }
               });
             }
           }
@@ -955,7 +955,7 @@ async function startServer() {
             // Preserve user's existing time candidate votes (keep web votes intact)
             const mergedVotes = (old.votes && Object.keys(old.votes).length > 0)
               ? old.votes
-              : (signup.votes || { 0: 'yes', interest: 'yes' });
+              : (signup.votes || { interest: 'yes' });
 
             const mergedRecord = {
               ...old,
@@ -986,7 +986,7 @@ async function startServer() {
                 avatar: signup.avatar || ''
               },
               vote: 'yes',
-              votes: signup.votes || { 0: 'yes', interest: 'yes' }
+              votes: signup.votes || { interest: 'yes' }
             };
             uniqueVotes.push(voteRecord);
             hasChanges = true;
@@ -1345,25 +1345,25 @@ async function startServer() {
     if (raidId && (ign || discordId || userId)) {
       if (discordSignupsStore[raidId]) {
         discordSignupsStore[raidId] = discordSignupsStore[raidId].filter(s => {
-          if (ign && s.ign?.trim().toLowerCase() === ign.trim().toLowerCase()) return false;
-          if (discordId && s.discordId === discordId) return false;
-          if (userId && (s.userId === userId || `dc_${s.discordId}_${s.ign}` === userId)) return false;
+          if (ign) return s.ign?.trim().toLowerCase() !== ign.trim().toLowerCase();
+          if (discordId) return s.discordId !== discordId;
+          if (userId) return s.userId !== userId && `dc_${s.discordId}_${s.ign}` !== userId;
           return true;
         });
       }
 
       if (raidStatusStore[raidId]) {
         const removedItems = (raidStatusStore[raidId].yesVotes || []).filter((v: any) => {
-          if (ign && v.ign?.trim().toLowerCase() === ign.trim().toLowerCase()) return true;
-          if (discordId && v.discordId === discordId) return true;
-          if (userId && (v.userId === userId || `dc_${v.discordId}_${v.ign}` === userId)) return true;
+          if (ign) return v.ign?.trim().toLowerCase() === ign.trim().toLowerCase();
+          if (discordId) return v.discordId === discordId;
+          if (userId) return v.userId === userId || `dc_${v.discordId}_${v.ign}` === userId;
           return false;
         });
 
         raidStatusStore[raidId].yesVotes = (raidStatusStore[raidId].yesVotes || []).filter((v: any) => {
-          if (ign && v.ign?.trim().toLowerCase() === ign.trim().toLowerCase()) return false;
-          if (discordId && v.discordId === discordId) return false;
-          if (userId && (v.userId === userId || `dc_${v.discordId}_${v.ign}` === userId)) return false;
+          if (ign) return v.ign?.trim().toLowerCase() !== ign.trim().toLowerCase();
+          if (discordId) return v.discordId !== discordId;
+          if (userId) return v.userId !== userId && `dc_${v.discordId}_${v.ign}` !== userId;
           return true;
         });
 
@@ -1403,7 +1403,7 @@ async function startServer() {
         level: level || 120,
         memo: memo || "",
         userId: userId || (discordId ? `dc_${discordId}_${ign}` : `web_${ign}`),
-        votes: votes || { 0: "yes", interest: "yes" },
+        votes: votes || { interest: "yes" },
         vote: "yes",
         signedUpAt: new Date().toISOString()
       };
@@ -1415,7 +1415,7 @@ async function startServer() {
         discordSignupsStore[raidId][existingIdx] = {
           ...discordSignupsStore[raidId][existingIdx],
           ...signupRecord,
-          votes: votes || discordSignupsStore[raidId][existingIdx].votes || { 0: "yes", interest: "yes" }
+          votes: votes || discordSignupsStore[raidId][existingIdx].votes || { interest: "yes" }
         };
       } else {
         discordSignupsStore[raidId].push(signupRecord);
@@ -1434,7 +1434,7 @@ async function startServer() {
           level: level || 120,
           memo: memo || "",
           vote: "yes",
-          votes: votes || (vIdx >= 0 ? currentYes[vIdx].votes : { 0: "yes", interest: "yes" })
+          votes: votes || (vIdx >= 0 ? currentYes[vIdx].votes : { interest: "yes" })
         };
         if (vIdx >= 0) {
           currentYes[vIdx] = voterObj;
@@ -1883,7 +1883,7 @@ async function startServer() {
               level: selectedChar.level || 120,
               memo: selectedChar.memo || "",
               vote: "yes",
-              votes: { 0: "yes", interest: "yes" },
+              votes: { interest: "yes" },
               signedUpAt: new Date().toISOString()
             };
 
@@ -1910,7 +1910,7 @@ async function startServer() {
                 level: selectedChar.level || 120,
                 memo: selectedChar.memo || "",
                 vote: "yes",
-                votes: { 0: "yes", interest: "yes" },
+                votes: { interest: "yes" },
                 discord: { id: discordId, username, avatar }
               };
               if (vIdx >= 0) {
