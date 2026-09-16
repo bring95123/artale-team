@@ -583,14 +583,17 @@ export default function App() {
   }, [db, customUid, discordUser]);
 
   // Auto-sync Discord interactive signups in real-time when viewing a raid
+  const raidsRef = useRef(raids);
+  raidsRef.current = raids;
+
   useEffect(() => {
     if (!currentRaidId) return;
     handleSyncDiscordSignups(currentRaidId, true);
     const timer = setInterval(() => {
       handleSyncDiscordSignups(currentRaidId, true);
-    }, 3500);
+    }, 5000);
     return () => clearInterval(timer);
-  }, [currentRaidId, raids]);
+  }, [currentRaidId]);
 
   // Keep floating chat closed by default (only opened when user clicks the floating button)
   useEffect(() => {
@@ -1374,7 +1377,7 @@ export default function App() {
       const yesVotes: any[] = data.yesVotes || [];
       const noVotes: any[] = data.noVotes || [];
 
-      const raid = raids.find(r => r.id === raidId);
+      const raid = raidsRef.current.find((r: any) => r.id === raidId);
       if (!raid) return;
 
       const raidRef = doc(db, `artifacts/${appId}/public/data/raids/${raidId}`);
@@ -2485,7 +2488,7 @@ export default function App() {
                                   : 'bg-slate-800 hover:bg-slate-750 border-slate-700 text-slate-300 hover:text-white'
                               }`}
                             >
-                              <span className={`w-2.5 h-2.5 rounded-full ${isMyCharacterVotedYes ? 'bg-white animate-pulse' : 'bg-emerald-500'}`}></span>
+                              <span className={`w-2.5 h-2.5 rounded-full ${isMyCharacterVotedYes ? 'bg-white shadow-sm ring-1 ring-white/60' : 'bg-emerald-500'}`}></span>
                               <span>{isMyCharacterVotedYes ? '🟢 已登記可以配合 (點擊取消)' : '🟢 可以配合'}</span>
                             </button>
                           </div>
@@ -2611,7 +2614,7 @@ export default function App() {
                               <div className="flex items-center space-x-2">
                                 <span className="text-xs font-bold text-indigo-400 font-mono">時間候選區 #{idx + 1}</span>
                                 {isFinalized && (
-                                  <span className="bg-amber-400 text-slate-950 text-[10.5px] font-black px-2 py-0.5 rounded-lg shadow animate-pulse">
+                                  <span className="bg-amber-400 text-slate-950 text-[10.5px] font-black px-2 py-0.5 rounded-lg shadow">
                                     ★ 最終拍板出征時段
                                   </span>
                                 )}
@@ -2629,7 +2632,7 @@ export default function App() {
                                     : 'bg-slate-800 hover:bg-slate-750 border-slate-700 text-slate-300 hover:text-white'
                                 }`}
                               >
-                                <span className={`w-2.5 h-2.5 rounded-full ${isVotedYes ? 'bg-white animate-pulse' : 'bg-emerald-500'}`}></span>
+                                <span className={`w-2.5 h-2.5 rounded-full ${isVotedYes ? 'bg-white shadow-sm ring-1 ring-white/60' : 'bg-emerald-500'}`}></span>
                                 <span>{isVotedYes ? '🟢 已登記可以配合 (點擊取消)' : '🟢 可以配合'}</span>
                               </button>
 
