@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db, auth } from './firebase';
 import { 
   collection, 
@@ -192,6 +192,7 @@ export default function App() {
 
   // Authorized Admins state & real-time sync
   const [authorizedAdmins, setAuthorizedAdmins] = useState<AuthorizedAdmin[]>([]);
+  const lastSyncedRaidPayloadsRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
     if (!db) return;
@@ -475,41 +476,49 @@ export default function App() {
       const yesVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'yes' || Object.values(v.votes || {}).includes('yes'));
       const noVotes = interestVotes.filter((v: any) => v.votes?.['interest'] === 'no' || (Object.values(v.votes || {}).includes('no') && !Object.values(v.votes || {}).includes('yes')));
 
+      const payload = {
+        raidId: r.id,
+        title: r.title,
+        bossName: raidBoss?.name.split(' (')[0] || r.title,
+        partyCount: r.partyCount || 1,
+        targetCount: raidBoss?.maxPlayers || 12,
+        leaderName: r.creatorIgn || '團長',
+        customNote: r.notes || '',
+        mode: r.mode,
+        proposedTimes: r.proposedTimes || [],
+        finalTimeIndex: r.finalTimeIndex,
+        yesVotes: yesVotes.map((v: any) => ({
+          ign: v.ign,
+          job: v.job,
+          level: v.level,
+          votes: v.votes,
+          discordId: v.discord?.id || v.discordId || (v.userId?.startsWith('dc_') ? v.userId.replace('dc_', '') : ''),
+          username: v.discord?.username || ''
+        })),
+        noVotes: noVotes.map((v: any) => ({
+          ign: v.ign,
+          job: v.job,
+          level: v.level,
+          votes: v.votes,
+          discordId: v.discord?.id || v.discordId || (v.userId?.startsWith('dc_') ? v.userId.replace('dc_', '') : ''),
+          username: v.discord?.username || ''
+        })),
+        party1: party1.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId })),
+        party2: party2.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId })),
+        party3: party3.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId })),
+        reserves: reserves.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId }))
+      };
+
+      const payloadStr = JSON.stringify(payload);
+      if (lastSyncedRaidPayloadsRef.current[r.id] === payloadStr) {
+        continue;
+      }
+      lastSyncedRaidPayloadsRef.current[r.id] = payloadStr;
+
       fetch('/api/discord/sync-raid-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          raidId: r.id,
-          title: r.title,
-          bossName: raidBoss?.name.split(' (')[0] || r.title,
-          partyCount: r.partyCount || 1,
-          targetCount: raidBoss?.maxPlayers || 12,
-          leaderName: r.creatorIgn || '團長',
-          customNote: r.notes || '',
-          mode: r.mode,
-          proposedTimes: r.proposedTimes || [],
-          finalTimeIndex: r.finalTimeIndex,
-          yesVotes: yesVotes.map((v: any) => ({
-            ign: v.ign,
-            job: v.job,
-            level: v.level,
-            votes: v.votes,
-            discordId: v.discord?.id || v.discordId || (v.userId?.startsWith('dc_') ? v.userId.replace('dc_', '') : ''),
-            username: v.discord?.username || ''
-          })),
-          noVotes: noVotes.map((v: any) => ({
-            ign: v.ign,
-            job: v.job,
-            level: v.level,
-            votes: v.votes,
-            discordId: v.discord?.id || v.discordId || (v.userId?.startsWith('dc_') ? v.userId.replace('dc_', '') : ''),
-            username: v.discord?.username || ''
-          })),
-          party1: party1.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId })),
-          party2: party2.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId })),
-          party3: party3.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId })),
-          reserves: reserves.map((p: any) => ({ ign: p.ign, job: p.job, level: p.level, discordId: p.discord?.id || p.discordId }))
-        })
+        body: payloadStr
       }).catch(e => {});
     }
   }, [raids, bosses]);

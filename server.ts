@@ -930,7 +930,8 @@ async function startServer() {
                 job: y.job || '冒險者',
                 level: y.level || 120,
                 memo: y.memo || '',
-                vote: 'yes'
+                vote: 'yes',
+                votes: y.votes || { 0: 'yes', interest: 'yes' }
               });
             }
           }
@@ -951,9 +952,9 @@ async function startServer() {
 
           if (existingIdx >= 0) {
             const old = uniqueVotes[existingIdx];
-            // Preserve user's existing time candidate votes (e.g. voted for multiple slots on web)
+            // Preserve user's existing time candidate votes (keep web votes intact)
             const mergedVotes = (old.votes && Object.keys(old.votes).length > 0)
-              ? { ...old.votes, ...(signup.votes || {}) }
+              ? old.votes
               : (signup.votes || { 0: 'yes', interest: 'yes' });
 
             const mergedRecord = {
@@ -1024,9 +1025,13 @@ async function startServer() {
           }
         }
 
-        if (hasChanges) {
+        // Only write to Firestore if there are real differences
+        const isVotesIdentical = JSON.stringify(filteredVotes) === JSON.stringify(currentVotes);
+        const isParticipantsIdentical = JSON.stringify(filteredParticipants) === JSON.stringify(currentParticipants);
+
+        if (!isVotesIdentical || !isParticipantsIdentical) {
           const updateData: any = { votes: filteredVotes };
-          if (filteredParticipants !== currentParticipants) {
+          if (!isParticipantsIdentical) {
             updateData.participants = filteredParticipants;
           }
           const safeData = JSON.parse(JSON.stringify(updateData, (_key, val) => (val === undefined ? null : val)));
@@ -1042,13 +1047,15 @@ async function startServer() {
     }
   };
 
-  const saveRaidStatuses = () => {
+  const saveRaidStatuses = (syncToFirestore = false) => {
     try {
       fs.writeFileSync(raidStatusesFilePath, JSON.stringify(raidStatusStore, null, 2), "utf-8");
       fs.writeFileSync(discordSignupsFilePath, JSON.stringify(discordSignupsStore, null, 2), "utf-8");
       syncDiscordGatewayClients();
-      // Auto-sync directly to Firestore whenever Discord state updates
-      syncDiscordSignupsToFirestore().catch(() => {});
+      // Auto-sync directly to Firestore ONLY when requested (e.g. from Discord bot interaction)
+      if (syncToFirestore) {
+        syncDiscordSignupsToFirestore().catch(() => {});
+      }
     } catch (err) {
       console.error("Failed to save raid_statuses.json", err);
     }
@@ -1924,7 +1931,7 @@ async function startServer() {
             registeredChars.push(selectedChar);
           }
 
-          saveRaidStatuses();
+          saveRaidStatuses(true);
           updateDiscordCardMessage(raidId).catch(() => {});
 
           const allUserSignups = discordSignupsStore[raidId].filter(s => s.discordId === discordId);
@@ -2050,7 +2057,7 @@ async function startServer() {
           registeredChars.push(selectedChar);
         }
 
-        saveRaidStatuses();
+        saveRaidStatuses(true);
         updateDiscordCardMessage(raidId).catch(() => {});
 
         const allUserSignups = discordSignupsStore[raidId].filter(s => s.discordId === discordId);
@@ -2205,7 +2212,7 @@ async function startServer() {
               });
               raidStatusStore[raidId].noVotes = currentNo;
             }
-            saveRaidStatuses();
+            saveRaidStatuses(true);
             updateDiscordCardMessage(raidId).catch(() => {});
           }
 
@@ -2293,7 +2300,7 @@ async function startServer() {
               }
             }
             raidStatusStore[raidId].noVotes = currentNo;
-            saveRaidStatuses();
+            saveRaidStatuses(true);
             updateDiscordCardMessage(raidId).catch(() => {});
           }
 
@@ -2352,7 +2359,7 @@ async function startServer() {
           }
 
           if (raidStatusStore[raidId]) {
-            saveRaidStatuses();
+            saveRaidStatuses(true);
             updateDiscordCardMessage(raidId).catch(() => {});
           }
 
@@ -2513,7 +2520,7 @@ async function startServer() {
           }
           raidStatusStore[raidId].yesVotes = currentYes;
           raidStatusStore[raidId].noVotes = (raidStatusStore[raidId].noVotes || []).filter((v: any) => !(v.discordId === discordId && v.ign === ign));
-          saveRaidStatuses();
+          saveRaidStatuses(true);
         }
 
         const allUserSignups = discordSignupsStore[raidId].filter(s => s.discordId === discordId);
