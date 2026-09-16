@@ -8,6 +8,25 @@ import { WebSocket } from "ws";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore, doc, getDoc, updateDoc } from "firebase/firestore";
 
+function formatDateTime(dateTimeStr: string): string {
+  if (!dateTimeStr) return '';
+  if (!dateTimeStr.includes('T') && !dateTimeStr.includes('-')) return dateTimeStr;
+  try {
+    const date = new Date(dateTimeStr);
+    if (isNaN(date.getTime())) return dateTimeStr;
+    const days = ['日', '一', '二', '三', '四', '五', '六'];
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const dayName = days[date.getDay()];
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d} (${dayName}) ${hh}:${mm}`;
+  } catch {
+    return dateTimeStr;
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
@@ -285,7 +304,10 @@ async function startServer() {
       party2 = [],
       party3 = [],
       reserves = [],
-      partyCount = 1
+      partyCount = 1,
+      proposedTimes = [],
+      finalTimeIndex,
+      mode = 'datetime'
     } = req.body;
 
     if (!botToken || !channelId) {
@@ -346,6 +368,9 @@ async function startServer() {
         partyCount: partyCount || 1,
         customNote: customNote || '',
         appUrl: appUrl || '',
+        proposedTimes: Array.isArray(proposedTimes) ? proposedTimes : [],
+        finalTimeIndex,
+        mode: mode || 'datetime',
         yesVotes: Array.isArray(yesVotes) ? yesVotes : [],
         noVotes: Array.isArray(noVotes) ? noVotes : [],
         maybeVotes: Array.isArray(maybeVotes) ? maybeVotes : [],
@@ -359,22 +384,42 @@ async function startServer() {
 
       const noteSection = customNote ? `\n📌 **隊長叮嚀**：\n> ${customNote.replace(/\n/g, '\n> ')}\n` : '';
 
+      const embedFields: any[] = [];
+
+      // Candidate Times Breakdown
+      if (Array.isArray(proposedTimes) && proposedTimes.length > 0 && mode !== 'interest') {
+        const timesBreakdown = proposedTimes.map((timeStr: string, tIdx: number) => {
+          const votersForTime = (yesVotes || []).filter((v: any) => v.votes?.[tIdx] === 'yes');
+          const voterNames = votersForTime.map((v: any) => v.ign).join(', ');
+          const isFinalized = typeof finalTimeIndex === 'number' && finalTimeIndex === tIdx;
+          return `**#${tIdx + 1} ${formatDateTime(timeStr)}** ${isFinalized ? '👑 (已定案出征)' : `\`${votersForTime.length} 人配合\``}\n${voterNames ? `> 👤 ${voterNames}` : '> *(尚無人員登記)*'}`;
+        }).join('\n');
+
+        embedFields.push({
+          name: `⏰ 時間候選登記現況 (${proposedTimes.length} 個候選)`,
+          value: timesBreakdown.length > 1024 ? timesBreakdown.slice(0, 1020) + '...' : timesBreakdown,
+          inline: false
+        });
+      }
+
+      embedFields.push(
+        {
+          name: `🟢 行程可以配合的人員 (${(yesVotes || []).length} 人)`,
+          value: yesListText.length > 1024 ? yesListText.slice(0, 1020) + '...' : yesListText,
+          inline: false
+        },
+        {
+          name: `👥 目前小隊陣容錄取編組`,
+          value: (partyRosterText || partyMembersSummary || '*(暫無隊員錄取)*').slice(0, 1024),
+          inline: false
+        }
+      );
+
       const embed = {
         title: title || `⚔️ 【${bossName || '遠征隊'}】 隊伍招募與意願調查！`,
         description: `👑 **隊長**：${leaderName || '冒險者'} ｜ 🎯 **目標人數**：\`${currentCount || 0} / ${targetCount || 12} 人\`${noteSection}`,
         color: 5814783, // Royal Indigo
-        fields: [
-          {
-            name: `🟢 行程可以配合的人員 (${(yesVotes || []).length} 人)`,
-            value: yesListText.length > 1024 ? yesListText.slice(0, 1020) + '...' : yesListText,
-            inline: false
-          },
-          {
-            name: `👥 目前小隊陣容錄取編組`,
-            value: (partyRosterText || partyMembersSummary || '*(暫無隊員錄取)*').slice(0, 1024),
-            inline: false
-          }
-        ],
+        fields: embedFields,
         timestamp: new Date().toISOString(),
         footer: {
           text: `NyxShade Expedition System • 點擊下方按鈕直接一鍵選擇角色卡報名！`
@@ -904,29 +949,49 @@ async function startServer() {
             (v.userId === `dc_${signup.discordId}_${signup.ign}`)
           );
 
-          const voteRecord = {
-            userId: (existingIdx >= 0 ? uniqueVotes[existingIdx].userId : '') || `dc_${signup.discordId || 'unknown'}_${signup.ign || 'unknown'}`,
-            discordId: signup.discordId || '',
-            ign: signup.ign || '',
-            job: signup.job || '冒險者',
-            level: Number(signup.level) || 120,
-            memo: signup.memo || (signup.username ? `Discord 卡片報名 (@${signup.username})` : 'Discord 卡片報名'),
-            discord: {
-              id: signup.discordId || '',
-              username: signup.username || '',
-              avatar: signup.avatar || ''
-            },
-            vote: 'yes',
-            votes: { 0: 'yes', interest: 'yes' }
-          };
-
           if (existingIdx >= 0) {
             const old = uniqueVotes[existingIdx];
-            if (old.job !== voteRecord.job || !old.discord || JSON.stringify(old.votes) !== JSON.stringify(voteRecord.votes)) {
-              uniqueVotes[existingIdx] = { ...old, ...voteRecord };
+            // Preserve user's existing time candidate votes (e.g. voted for multiple slots on web)
+            const mergedVotes = (old.votes && Object.keys(old.votes).length > 0)
+              ? { ...old.votes, ...(signup.votes || {}) }
+              : (signup.votes || { 0: 'yes', interest: 'yes' });
+
+            const mergedRecord = {
+              ...old,
+              ign: signup.ign || old.ign,
+              job: signup.job || old.job,
+              level: Number(signup.level) || old.level || 120,
+              memo: signup.memo || old.memo || '',
+              discord: signup.discord || old.discord || (signup.discordId ? { id: signup.discordId, username: signup.username, avatar: signup.avatar } : old.discord),
+              votes: mergedVotes,
+              vote: 'yes'
+            };
+
+            if (
+              old.job !== mergedRecord.job ||
+              old.level !== mergedRecord.level ||
+              JSON.stringify(old.votes) !== JSON.stringify(mergedRecord.votes) ||
+              (!old.discord && mergedRecord.discord)
+            ) {
+              uniqueVotes[existingIdx] = mergedRecord;
               hasChanges = true;
             }
           } else {
+            const voteRecord = {
+              userId: `dc_${signup.discordId || 'unknown'}_${signup.ign || 'unknown'}`,
+              discordId: signup.discordId || '',
+              ign: signup.ign || '',
+              job: signup.job || '冒險者',
+              level: Number(signup.level) || 120,
+              memo: signup.memo || (signup.username ? `Discord 卡片報名 (@${signup.username})` : 'Discord 卡片報名'),
+              discord: {
+                id: signup.discordId || '',
+                username: signup.username || '',
+                avatar: signup.avatar || ''
+              },
+              vote: 'yes',
+              votes: signup.votes || { 0: 'yes', interest: 'yes' }
+            };
             uniqueVotes.push(voteRecord);
             hasChanges = true;
           }
@@ -1085,22 +1150,43 @@ async function startServer() {
 
       const noteSection = raidInfo.customNote ? `\n📌 **隊長叮嚀**：\n> ${raidInfo.customNote.replace(/\n/g, '\n> ')}\n` : '';
 
+      const embedFields: any[] = [];
+
+      // Candidate Times Breakdown
+      const proposedTimes = raidInfo.proposedTimes;
+      if (Array.isArray(proposedTimes) && proposedTimes.length > 0 && raidInfo.mode !== 'interest') {
+        const timesBreakdown = proposedTimes.map((timeStr: string, tIdx: number) => {
+          const votersForTime = (yesVotes || []).filter((v: any) => v.votes?.[tIdx] === 'yes');
+          const voterNames = votersForTime.map((v: any) => v.ign).join(', ');
+          const isFinalized = typeof raidInfo.finalTimeIndex === 'number' && raidInfo.finalTimeIndex === tIdx;
+          return `**#${tIdx + 1} ${formatDateTime(timeStr)}** ${isFinalized ? '👑 (已定案出征)' : `\`${votersForTime.length} 人配合\``}\n${voterNames ? `> 👤 ${voterNames}` : '> *(尚無人員登記)*'}`;
+        }).join('\n');
+
+        embedFields.push({
+          name: `⏰ 時間候選登記現況 (${proposedTimes.length} 個候選)`,
+          value: timesBreakdown.length > 1024 ? timesBreakdown.slice(0, 1020) + '...' : timesBreakdown,
+          inline: false
+        });
+      }
+
+      embedFields.push(
+        {
+          name: `🟢 行程可以配合的人員 (${yesVotes.length} 人)`,
+          value: yesListText.length > 1024 ? yesListText.slice(0, 1020) + '...' : yesListText,
+          inline: false
+        },
+        {
+          name: `👥 目前小隊陣容錄取編組`,
+          value: (partyRosterText || '*(暫無隊員錄取)*').slice(0, 1024),
+          inline: false
+        }
+      );
+
       const embed = {
         title: raidInfo.title || `⚔️ 【${raidInfo.bossName || '遠征隊'}】 隊伍招募與意願調查！`,
         description: `👑 **隊長**：${raidInfo.leaderName || '冒險者'} ｜ 🎯 **目標人數**：\`${yesVotes.length} / ${raidInfo.targetCount || 12} 人\`${noteSection}`,
         color: 5814783,
-        fields: [
-          {
-            name: `🟢 行程可以配合的人員 (${yesVotes.length} 人)`,
-            value: yesListText.length > 1024 ? yesListText.slice(0, 1020) + '...' : yesListText,
-            inline: false
-          },
-          {
-            name: `👥 目前小隊陣容錄取編組`,
-            value: (partyRosterText || '*(暫無隊員錄取)*').slice(0, 1024),
-            inline: false
-          }
-        ],
+        fields: embedFields,
         timestamp: new Date().toISOString(),
         footer: {
           text: `NyxShade Expedition System • 點擊下方按鈕直接一鍵選擇角色卡報名！`
@@ -1302,7 +1388,7 @@ async function startServer() {
 
   // API Route - Record Web Signup to Server Store and patch Discord Card
   app.post("/api/discord/record-web-signup", (req: express.Request, res: express.Response) => {
-    const { raidId, discordId, ign, job, level, memo, userId } = req.body;
+    const { raidId, discordId, ign, job, level, memo, userId, votes } = req.body;
     if (raidId && ign) {
       if (!discordSignupsStore[raidId]) {
         discordSignupsStore[raidId] = [];
@@ -1315,6 +1401,8 @@ async function startServer() {
         level: level || 120,
         memo: memo || "",
         userId: userId || (discordId ? `dc_${discordId}_${ign}` : `web_${ign}`),
+        votes: votes || { 0: "yes", interest: "yes" },
+        vote: "yes",
         signedUpAt: new Date().toISOString()
       };
 
@@ -1322,7 +1410,11 @@ async function startServer() {
         s.ign?.trim().toLowerCase() === ign.trim().toLowerCase()
       );
       if (existingIdx >= 0) {
-        discordSignupsStore[raidId][existingIdx] = signupRecord;
+        discordSignupsStore[raidId][existingIdx] = {
+          ...discordSignupsStore[raidId][existingIdx],
+          ...signupRecord,
+          votes: votes || discordSignupsStore[raidId][existingIdx].votes || { 0: "yes", interest: "yes" }
+        };
       } else {
         discordSignupsStore[raidId].push(signupRecord);
       }
@@ -1338,7 +1430,9 @@ async function startServer() {
           ign,
           job: job || "主教",
           level: level || 120,
-          memo: memo || ""
+          memo: memo || "",
+          vote: "yes",
+          votes: votes || (vIdx >= 0 ? currentYes[vIdx].votes : { 0: "yes", interest: "yes" })
         };
         if (vIdx >= 0) {
           currentYes[vIdx] = voterObj;
@@ -1384,7 +1478,8 @@ async function startServer() {
               job: s.job || "冒險者",
               level: s.level || 120,
               memo: s.memo || "",
-              vote: "yes"
+              vote: "yes",
+              votes: s.votes || { 0: "yes", interest: "yes" }
             });
           }
         }
@@ -1394,9 +1489,17 @@ async function startServer() {
           if (v && v.ign) {
             const k = v.ign.trim().toLowerCase();
             if (mergedYesMap.has(k)) {
-              mergedYesMap.set(k, { ...mergedYesMap.get(k), ...v });
+              const old = mergedYesMap.get(k);
+              mergedYesMap.set(k, {
+                ...old,
+                ...v,
+                votes: v.votes || old.votes || { 0: "yes", interest: "yes" }
+              });
             } else {
-              mergedYesMap.set(k, v);
+              mergedYesMap.set(k, {
+                ...v,
+                votes: v.votes || { 0: "yes", interest: "yes" }
+              });
             }
           }
         });
@@ -1690,6 +1793,74 @@ async function startServer() {
         const charValues = selectedValues.filter(v => v.startsWith("char_"));
         if (charValues.length > 0) {
           const userProfile = userCharactersStore[discordId];
+          const proposedTimes = raidInfo?.proposedTimes || [];
+
+          // If this raid has multiple candidate time slots and time isn't finalized yet, prompt for time slot selection!
+          if (Array.isArray(proposedTimes) && proposedTimes.length > 1 && raidInfo?.mode !== 'interest' && typeof raidInfo?.finalTimeIndex !== 'number') {
+            const timeOptions = [
+              ...proposedTimes.slice(0, 23).map((timeStr: string, idx: number) => {
+                const formatted = formatDateTime(timeStr);
+                return {
+                  label: `候選 #${idx + 1}: ${formatted}`.slice(0, 100),
+                  value: `slot_${idx}`,
+                  description: `登記此候選出團時段 #${idx + 1}`,
+                  emoji: { name: "⏰" }
+                };
+              }),
+              {
+                label: "✨ 以上全部時段皆可配合 (全部時段登記)",
+                value: "slot_all",
+                description: "這幾天所有候選時段我都有空出團！",
+                emoji: { name: "🌟" }
+              }
+            ];
+
+            const selectedCharNames = charValues
+              .map(val => {
+                const idx = parseInt(val.replace("char_", ""), 10);
+                return userProfile?.characters?.[idx]?.ign;
+              })
+              .filter(Boolean)
+              .join(', ');
+
+            const charsParam = charValues.join(",");
+
+            return respondAndAutoDelete({
+              type: 7, // UPDATE_MESSAGE
+              data: {
+                content: `👋 <@${discordId}> 已選擇出團角色：**【${selectedCharNames}】**\n\n📌 本場遠征隊目前設有 **${proposedTimes.length} 個時間候選區**。\n請在下方下拉選單中**勾選您可以配合出團的所有時段** (支援多選)，或點擊下方綠色按鈕全選：\n\n*(⏱️ 此訊息將於 1 分鐘後自動隱藏/消失)*`,
+                components: [
+                  {
+                    type: 1, // Action Row with Select Menu
+                    components: [
+                      {
+                        type: 3, // String Select Menu
+                        custom_id: `select_times_${raidId}_${charsParam}`,
+                        placeholder: "⏰ 點擊勾選可以配合的時間候選區 (可多選)...",
+                        options: timeOptions,
+                        min_values: 1,
+                        max_values: Math.min(timeOptions.length, 25)
+                      }
+                    ]
+                  },
+                  {
+                    type: 1, // Action Row with Quick Button
+                    components: [
+                      {
+                        type: 2, // BUTTON
+                        style: 3, // Success (Green)
+                        custom_id: `times_all_${raidId}_${charsParam}`,
+                        label: "🌟 快速全選：所有候選時段皆可配合",
+                        emoji: { name: "✨" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            });
+          }
+
+          // Otherwise (Single slot / Finalized / Interest mode), directly register
           const registeredChars: any[] = [];
 
           if (!discordSignupsStore[raidId]) {
@@ -1772,6 +1943,126 @@ async function startServer() {
           type: 7,
           data: {
             content: `ℹ️ <@${discordId}> 未選取有效的角色卡，請重新點選報名按鈕進行選擇。`,
+            components: []
+          }
+        });
+      }
+
+      // 2.5 Select Time Candidates for chosen characters
+      if (customId.startsWith("select_times_") || customId.startsWith("times_all_")) {
+        const isAll = customId.startsWith("times_all_");
+        const prefix = isAll ? "times_all_" : "select_times_";
+        const rest = customId.replace(prefix, "");
+        const firstUnderscore = rest.indexOf("_");
+        const raidId = firstUnderscore >= 0 ? rest.slice(0, firstUnderscore) : rest;
+        const charsParam = firstUnderscore >= 0 ? rest.slice(firstUnderscore + 1) : "";
+
+        const raidInfo = raidStatusStore[raidId];
+        const userProfile = userCharactersStore[discordId];
+        const proposedTimes = raidInfo?.proposedTimes || [];
+
+        const selectedSlotValues: string[] = isAll ? ["slot_all"] : (interaction.data?.values || []);
+
+        // Calculate votes map
+        const votesMap: Record<string, string> = { interest: "yes" };
+        const chosenTimeStrings: string[] = [];
+
+        if (selectedSlotValues.includes("slot_all")) {
+          proposedTimes.forEach((t: string, idx: number) => {
+            votesMap[idx] = "yes";
+            chosenTimeStrings.push(`• ⏰ **候選 #${idx + 1}**：${formatDateTime(t)}`);
+          });
+          if (proposedTimes.length === 0) {
+            votesMap[0] = "yes";
+          }
+        } else {
+          selectedSlotValues.forEach(val => {
+            if (val.startsWith("slot_")) {
+              const slotIdx = parseInt(val.replace("slot_", ""), 10);
+              votesMap[slotIdx] = "yes";
+              if (proposedTimes[slotIdx]) {
+                chosenTimeStrings.push(`• ⏰ **候選 #${slotIdx + 1}**：${formatDateTime(proposedTimes[slotIdx])}`);
+              }
+            }
+          });
+        }
+
+        const charValues = charsParam.split(",").filter(v => v.startsWith("char_"));
+        const registeredChars: any[] = [];
+
+        if (!discordSignupsStore[raidId]) {
+          discordSignupsStore[raidId] = [];
+        }
+
+        for (const val of charValues) {
+          const charIndex = parseInt(val.replace("char_", ""), 10);
+          const selectedChar = userProfile?.characters?.[charIndex];
+          if (!selectedChar) continue;
+
+          const signupRecord = {
+            discordId: discordId || "",
+            username: username || "",
+            avatar: avatar || "",
+            ign: selectedChar.ign || "",
+            job: selectedChar.job || "冒險者",
+            level: selectedChar.level || 120,
+            memo: selectedChar.memo || "",
+            vote: "yes",
+            votes: votesMap,
+            signedUpAt: new Date().toISOString()
+          };
+
+          const existingIdx = discordSignupsStore[raidId].findIndex(s => 
+            s.ign?.trim().toLowerCase() === selectedChar.ign?.trim().toLowerCase() || (s.discordId === discordId && s.ign === selectedChar.ign)
+          );
+          if (existingIdx >= 0) {
+            discordSignupsStore[raidId][existingIdx] = signupRecord;
+          } else {
+            discordSignupsStore[raidId].push(signupRecord);
+          }
+
+          if (raidStatusStore[raidId]) {
+            const currentYes = raidStatusStore[raidId].yesVotes || [];
+            const vIdx = currentYes.findIndex((v: any) => 
+              v.ign?.trim().toLowerCase() === selectedChar.ign?.trim().toLowerCase() || (v.discordId === discordId && v.ign === selectedChar.ign)
+            );
+            const voterObj = {
+              userId: `dc_${discordId}_${selectedChar.ign}`,
+              discordId,
+              ign: selectedChar.ign,
+              job: selectedChar.job,
+              level: selectedChar.level || 120,
+              memo: selectedChar.memo || "",
+              vote: "yes",
+              votes: votesMap,
+              discord: { id: discordId, username, avatar }
+            };
+            if (vIdx >= 0) {
+              currentYes[vIdx] = voterObj;
+            } else {
+              currentYes.push(voterObj);
+            }
+            raidStatusStore[raidId].yesVotes = currentYes;
+            raidStatusStore[raidId].noVotes = (raidStatusStore[raidId].noVotes || []).filter((v: any) => 
+              !(v.ign?.trim().toLowerCase() === selectedChar.ign?.trim().toLowerCase())
+            );
+          }
+          registeredChars.push(selectedChar);
+        }
+
+        saveRaidStatuses();
+        updateDiscordCardMessage(raidId).catch(() => {});
+
+        const allUserSignups = discordSignupsStore[raidId].filter(s => s.discordId === discordId);
+        const charListText = registeredChars.map(c => `• 🗡️ **【${c.ign}】** (${c.job} Lv.${c.level || 120})`).join('\n');
+        const timesSummaryText = chosenTimeStrings.length > 0
+          ? chosenTimeStrings.join('\n')
+          : `• ⏰ 意願調查模式 / 預設時段`;
+
+        return respondAndAutoDelete({
+          type: 7, // UPDATE_MESSAGE
+          data: {
+            content: `🎉 **時間候選時段登記成功！**\n\n已成功為您登記 **${registeredChars.length}** 隻出團角色卡：\n${charListText}\n🤖 **Discord 帳號**: <@${discordId}>\n\n⏰ **您登記可以配合的出團時段如下**：\n${timesSummaryText}\n\n🟢 **意願已成功登記並即時同步至網站與頻道卡片！**\n*(目前您已以此帳號在該遠征隊報名 ${allUserSignups.length} 隻角色：${allUserSignups.map(s => s.ign).join(', ')})\n\n💡 提示：可隨時點擊「🙋 快速報名 / 選擇角色卡」重新選擇或加選時段！\n\n*(⏱️ 此訊息將於 1 分鐘後自動隱藏/消失)*`,
             components: []
           }
         });

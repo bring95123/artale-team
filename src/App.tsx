@@ -486,10 +486,14 @@ export default function App() {
           targetCount: raidBoss?.maxPlayers || 12,
           leaderName: r.creatorIgn || '團長',
           customNote: r.notes || '',
+          mode: r.mode,
+          proposedTimes: r.proposedTimes || [],
+          finalTimeIndex: r.finalTimeIndex,
           yesVotes: yesVotes.map((v: any) => ({
             ign: v.ign,
             job: v.job,
             level: v.level,
+            votes: v.votes,
             discordId: v.discord?.id || v.discordId || (v.userId?.startsWith('dc_') ? v.userId.replace('dc_', '') : ''),
             username: v.discord?.username || ''
           })),
@@ -497,6 +501,7 @@ export default function App() {
             ign: v.ign,
             job: v.job,
             level: v.level,
+            votes: v.votes,
             discordId: v.discord?.id || v.discordId || (v.userId?.startsWith('dc_') ? v.userId.replace('dc_', '') : ''),
             username: v.discord?.username || ''
           })),
@@ -799,27 +804,41 @@ export default function App() {
           const activeVotesCount = Object.values(nextVotes).length;
           if (activeVotesCount === 0) {
             updatedVotes = updatedVotes.filter((_, idx) => idx !== userVoteIndex);
+            // Synchronously remove from server store & update Discord message embed
+            fetch('/api/discord/remove-signup', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                raidId,
+                ign: activeCharacter.ign,
+                userId: customUid,
+                discordId: discordUser?.id
+              })
+            }).catch(err => console.warn("Failed to sync remove signup", err));
           } else {
             updatedVotes[userVoteIndex] = userVote;
+            // Still has active votes in other time slots! Update server store with remaining votes:
+            fetch('/api/discord/record-web-signup', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                raidId,
+                ign: activeCharacter.ign,
+                job: activeCharacter.job,
+                level: activeCharacter.level,
+                memo: (activeCharacter.memo || '').trim(),
+                userId: customUid,
+                discordId: discordUser?.id,
+                votes: userVote.votes
+              })
+            }).catch(err => console.warn("Failed to record web signup", err));
           }
           await updateDoc(raidRef, { votes: updatedVotes });
 
-          // Synchronously remove from server store & update Discord message embed
-          fetch('/api/discord/remove-signup', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              raidId,
-              ign: activeCharacter.ign,
-              userId: customUid,
-              discordId: discordUser?.id
-            })
-          }).catch(err => console.warn("Failed to sync remove signup", err));
-
-          showToast(`已取消【${activeCharacter.ign}】的出團登記！`);
+          showToast(`已取消【${activeCharacter.ign}】於此時段的登記！`);
         } else {
           // Change/Update to choice
-          userVote.votes = { ...userVote.votes, [timeIndex]: choice };
+          userVote.votes = { ...(userVote.votes || {}), [timeIndex]: choice };
           updatedVotes[userVoteIndex] = userVote;
           await updateDoc(raidRef, { votes: updatedVotes });
 
@@ -834,7 +853,8 @@ export default function App() {
                 level: activeCharacter.level,
                 memo: (activeCharacter.memo || '').trim(),
                 userId: customUid,
-                discordId: discordUser?.id
+                discordId: discordUser?.id,
+                votes: userVote.votes
               })
             }).catch(err => console.warn("Failed to record web signup", err));
           }
@@ -843,7 +863,7 @@ export default function App() {
         }
       } else {
         // First-time vote
-        updatedVotes.push({
+        const newVoteEntry = {
           userId: customUid,
           ign: activeCharacter.ign,
           job: activeCharacter.job,
@@ -851,7 +871,8 @@ export default function App() {
           memo: (activeCharacter.memo || '').trim(),
           discord: discordUser || null,
           votes: { [timeIndex]: choice }
-        });
+        };
+        updatedVotes.push(newVoteEntry);
         await updateDoc(raidRef, { votes: updatedVotes });
 
         if (choice === 'yes') {
@@ -865,7 +886,8 @@ export default function App() {
               level: activeCharacter.level,
               memo: (activeCharacter.memo || '').trim(),
               userId: customUid,
-              discordId: discordUser?.id
+              discordId: discordUser?.id,
+              votes: newVoteEntry.votes
             })
           }).catch(err => console.warn("Failed to record web signup", err));
         }
@@ -1292,10 +1314,14 @@ export default function App() {
           customNote,
           appUrl: window.location.href,
           partyCount: raid.partyCount || 1,
+          mode: raid.mode,
+          proposedTimes: raid.proposedTimes || [],
+          finalTimeIndex: raid.finalTimeIndex,
           yesVotes: yesVotes.map((v: any) => ({
             ign: v.ign,
             job: v.job,
             level: v.level,
+            votes: v.votes,
             discordId: v.discord?.id || v.discordId || (v.userId?.startsWith('dc_') ? v.userId.replace('dc_', '') : ''),
             username: v.discord?.username || ''
           })),
@@ -1303,6 +1329,7 @@ export default function App() {
             ign: v.ign,
             job: v.job,
             level: v.level,
+            votes: v.votes,
             discordId: v.discord?.id || v.discordId || (v.userId?.startsWith('dc_') ? v.userId.replace('dc_', '') : ''),
             username: v.discord?.username || ''
           })),
@@ -1406,29 +1433,49 @@ export default function App() {
           (v.userId === `dc_${signup.discordId}_${signup.ign}`)
         );
         
-        const voteRecord = {
-          userId: (existingIdx >= 0 ? uniqueVotes[existingIdx].userId : '') || `dc_${signup.discordId || 'unknown'}_${signup.ign || 'unknown'}`,
-          discordId: signup.discordId || '',
-          ign: signup.ign || '',
-          job: signup.job || '冒險者',
-          level: Number(signup.level) || 120,
-          memo: signup.memo || (signup.username ? `Discord 卡片報名 (@${signup.username})` : 'Discord 卡片報名'),
-          discord: {
-            id: signup.discordId || '',
-            username: signup.username || '',
-            avatar: signup.avatar || ''
-          },
-          vote: 'yes',
-          votes: { 0: 'yes', interest: 'yes' }
-        };
-
         if (existingIdx >= 0) {
           const old = uniqueVotes[existingIdx];
-          if (old.job !== voteRecord.job || !old.discord || JSON.stringify(old.votes) !== JSON.stringify(voteRecord.votes)) {
-            uniqueVotes[existingIdx] = { ...old, ...voteRecord };
+          // Preserve user's existing time candidate votes (e.g. voted for multiple slots on web)
+          const mergedVotes = (old.votes && Object.keys(old.votes).length > 0)
+            ? { ...old.votes, ...(signup.votes || {}) }
+            : (signup.votes || { 0: 'yes', interest: 'yes' });
+
+          const mergedRecord = {
+            ...old,
+            ign: signup.ign || old.ign,
+            job: signup.job || old.job,
+            level: Number(signup.level) || old.level || 120,
+            memo: signup.memo || old.memo || '',
+            discord: signup.discord || old.discord || (signup.discordId ? { id: signup.discordId, username: signup.username, avatar: signup.avatar } : old.discord),
+            votes: mergedVotes,
+            vote: 'yes'
+          };
+
+          if (
+            old.job !== mergedRecord.job ||
+            old.level !== mergedRecord.level ||
+            JSON.stringify(old.votes) !== JSON.stringify(mergedRecord.votes) ||
+            (!old.discord && mergedRecord.discord)
+          ) {
+            uniqueVotes[existingIdx] = mergedRecord;
             hasChanges = true;
           }
         } else {
+          const voteRecord = {
+            userId: `dc_${signup.discordId || 'unknown'}_${signup.ign || 'unknown'}`,
+            discordId: signup.discordId || '',
+            ign: signup.ign || '',
+            job: signup.job || '冒險者',
+            level: Number(signup.level) || 120,
+            memo: signup.memo || (signup.username ? `Discord 卡片報名 (@${signup.username})` : 'Discord 卡片報名'),
+            discord: {
+              id: signup.discordId || '',
+              username: signup.username || '',
+              avatar: signup.avatar || ''
+            },
+            vote: 'yes',
+            votes: signup.votes || { 0: 'yes', interest: 'yes' }
+          };
           uniqueVotes.push(voteRecord);
           addedCount++;
           hasChanges = true;
