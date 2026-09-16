@@ -959,21 +959,16 @@ async function startServer() {
 
             const mergedRecord = {
               ...old,
-              ign: signup.ign || old.ign,
-              job: signup.job || old.job,
-              level: Number(signup.level) || old.level || 120,
-              memo: signup.memo || old.memo || '',
-              discord: signup.discord || old.discord || (signup.discordId ? { id: signup.discordId, username: signup.username, avatar: signup.avatar } : old.discord),
+              ign: old.ign || signup.ign,
+              job: old.job || signup.job,
+              level: old.level !== undefined ? old.level : (Number(signup.level) || 120),
+              memo: old.memo !== undefined ? old.memo : (signup.memo || ''),
+              discord: old.discord || (signup.discordId ? { id: signup.discordId, username: signup.username, avatar: signup.avatar } : null),
               votes: mergedVotes,
               vote: 'yes'
             };
 
-            if (
-              old.job !== mergedRecord.job ||
-              old.level !== mergedRecord.level ||
-              JSON.stringify(old.votes) !== JSON.stringify(mergedRecord.votes) ||
-              (!old.discord && mergedRecord.discord)
-            ) {
+            if (!old.discord && mergedRecord.discord) {
               uniqueVotes[existingIdx] = mergedRecord;
               hasChanges = true;
             }
@@ -1025,11 +1020,11 @@ async function startServer() {
           }
         }
 
-        // Only write to Firestore if there are real differences
+        // Only write to Firestore if genuine changes occurred
         const isVotesIdentical = JSON.stringify(filteredVotes) === JSON.stringify(currentVotes);
         const isParticipantsIdentical = JSON.stringify(filteredParticipants) === JSON.stringify(currentParticipants);
 
-        if (!isVotesIdentical || !isParticipantsIdentical) {
+        if (hasChanges && (!isVotesIdentical || !isParticipantsIdentical)) {
           const updateData: any = { votes: filteredVotes };
           if (!isParticipantsIdentical) {
             updateData.participants = filteredParticipants;
