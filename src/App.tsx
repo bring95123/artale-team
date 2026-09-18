@@ -29,7 +29,7 @@ import GachaSection from './components/GachaSection';
 import ChatSection from './components/ChatSection';
 import { ProfileModal, BossManagerModal, JobManagerModal, VoterDetailModal } from './components/Modals';
 import { AdminConsoleModal } from './components/AdminConsole';
-import SynergyAnalyzer from './components/SynergyAnalyzer';
+import BossGuideHub from './components/BossGuideHub';
 import FortuneDashboard from './components/FortuneDashboard';
 import DiscordThreadModal from './components/DiscordThreadModal';
 import InteractiveCardModal from './components/InteractiveCardModal';
@@ -2873,13 +2873,15 @@ export default function App() {
                     </div>
 
                     <div className="mt-8">
-                      <SynergyAnalyzer 
-                        participants={participants}
-                        activeRaidId={activeRaid.id}
-                        partyCount={partyCount}
+                      <BossGuideHub 
                         boss={boss || undefined}
+                        activeRaidId={activeRaid.id}
+                        appId={appId}
+                        activeCharacter={activeCharacter}
+                        discordUser={discordUser}
+                        customUid={customUid!}
                         isCreator={isCreator}
-                        onApplyOptimization={handleApplyOptimalRoster}
+                        isAdminLoggedIn={isAdminLoggedIn}
                         showToast={showToast}
                       />
                     </div>
